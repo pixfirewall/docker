@@ -1,0 +1,143 @@
+# a very minimal declarative config file
+_format_version: '3.0'
+_transform: true
+
+services:
+  - name: device-management-service
+    url: http://host.docker.internal
+    port: 3010
+
+    routes:
+      - name: device-management-api-route
+        paths:
+          - /home/[^/]+/device
+          - /v1/home/[^/]+/device
+        regex_priority: 100
+        strip_path: false
+        plugins:
+          - name: proxy-cache
+            config:
+              cache_ttl: 300
+              strategy: memory
+          - name: oidc
+            enabled: true
+            config:
+              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              client_id: kong-oidc
+              client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
+              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              bearer_only: 'yes'
+
+      - name: product-management-api-route
+        paths:
+          - /product
+          - /v1/product
+        strip_path: false
+        plugins:
+          - name: oidc
+            enabled: true
+            config:
+              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              client_id: kong-oidc
+              client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
+              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              bearer_only: 'yes'
+
+      - name: rule-management-api-route
+        paths:
+          - /home/[^/]+/rules
+          - /v1/home/[^/]+/rules
+        regex_priority: 100
+        strip_path: false
+        plugins:
+          - name: proxy-cache
+            config:
+              cache_ttl: 300
+              strategy: memory
+          - name: oidc
+            enabled: true
+            config:
+              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              client_id: kong-oidc
+              client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
+              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              bearer_only: 'yes'
+
+      - name: product-management-internal-api-route
+        paths:
+          - /product/internal
+          - /v1/product/internal
+        strip_path: false
+        plugins:
+          - name: key-auth
+            enabled: true
+            config:
+              hide_credentials: true
+              key_names:
+                - Alf-Internal-API-Key
+
+      - name: device-management-internal-api-route
+        paths:
+          - /device/internal
+          - /v1/device/internal
+        strip_path: false
+        plugins:
+          - name: key-auth
+            enabled: true
+            config:
+              hide_credentials: true
+              key_names:
+                - Alf-Internal-API-Key
+
+      - name: device-management-support-api-route
+        paths:
+          - /support/devices
+          - /v1/support/devices
+        strip_path: false
+        plugins:
+          - name: key-auth
+            enabled: true
+            config:
+              hide_credentials: true
+              key_names:
+                - Alf-Internal-API-Key
+
+      - name: device-management-docs-route
+        paths:
+          - /device/api-docs
+        strip_path: false
+
+      - name: device-management-status-route
+        paths:
+          - /device-health/status
+        strip_path: false
+
+consumers:
+  # - username: leakbot-x-apikey
+  #   keyauth_credentials:
+  #     - key: __ALF_LB_API_KEY_VALUE__
+
+  - username: internal-api
+    keyauth_credentials:
+      - key: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
+
+  # - username: ecom-webhook-apikey
+  #   keyauth_credentials:
+  #     - key: __ALF_ECOM_API_KEY_VALUE__
+
+  # - username: s4-customer-api-user
+  #   keyauth_credentials:
+  #     - key: __ALF_S4_API_KEY_VALUE__
+
+  # - username: subscription-integration-api
+  #   keyauth_credentials:
+  #     - key: __ALF_INTEGRATION_API_KEY_VALUE__
+
+  # - username: subscription-Hangfire-api
+  #   keyauth_credentials:
+  #     - key: __ALF_HANGFIRE_API_KEY_VALUE__
+
+  # - username: norce-engine
+  #   basicauth_credentials:
+  #     - username: __NORSE_ENGINE_USERNAME__
+  #       password: __NORSE_ENGINE_PASSWORD__

@@ -1,0 +1,257 @@
+version: '3.9'
+
+services:
+  kong-setup:
+    image: kong:${KONG_VERSION:-latest}
+    container_name: kong-setup
+    env_file: env/kong.env
+    volumes:
+      - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs
+    command: "kong migrations bootstrap"
+    networks:
+      - develop
+
+  kong:
+    image: local-kong:latest
+    build:
+      context: ./data/kong
+      dockerfile: Dockerfile
+    container_name: kong
+    env_file: env/kong.env
+    ports:
+      - 8000:8000
+      - 8001:8001
+      - 8002:8002
+      - 8443:8443
+      - 8444:8444
+    volumes:
+      # - kong_prefix_vol:${KONG_PREFIX:-/var/run/kong}
+      # - kong_tmp_vol:/tmp
+      # - kong_config_vol:/opt/kong
+      - ./data/kong/kong.yml:/opt/kong/kong.yml
+      - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs
+    security_opt:
+      - no-new-privileges
+    networks:
+      - develop
+
+  keycloak:
+    # image: ${CONTAINER_REGISTRY:-localhost}/auth/keycloak:${KEYCLOAK_VERSION:-latest}
+    image: local-keycloak:latest
+    build:
+      context: ./data/keycloak
+      dockerfile: Dockerfile
+      args:
+        - KC_DB=${KC_DB}
+        - KC_HEALTH_ENABLED=${KC_HEALTH_ENABLED}
+        - KC_METRICS_ENABLED=${KC_METRICS_ENABLED}
+      target: builder
+    container_name: keycloak
+    env_file: env/keycloak.env
+    ports:
+      - "8445:8443"
+    command: "start --optimized"
+    # command: "start --verbose"
+    volumes:
+      - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs/conf/keys
+    networks:
+      - develop
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    restart: always
+    # env_file: env/redis.env
+    ports:
+      - "6379:6379"
+    # command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+    volumes:
+      - ./data/redis/data/:/data
+    networks:
+      - develop
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: postgres
+    restart: always
+    env_file: env/postgres.env
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - ./data/postgres/data:/var/lib/postgresql/data
+      - ${SSL_CERTS_LOCATION:-./certs}:/var/lib/postgresql/certs
+    # command: >
+    #   -c ssl=on
+    #   -c ssl_cert_file=/var/lib/postgresql/certs/ca.pem
+    #   -c ssl_key_file=/var/lib/postgresql/certs/ca.key
+    networks:
+      - develop
+
+  mysql:
+    image: mysql/mysql-server:5.7
+    container_name: mysql
+    env_file: .env
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    volumes:
+      - ./data/mysql/data:/var/lib/mysql
+    ports:
+      - '${MYSQL_DATABASE_PORT}:3306'
+    networks:
+      - develop
+
+  mongodb:
+    image: mongo
+    container_name: mongodb
+    restart: always
+    env_file: env/mongodb.env
+    # command: mongod --auth
+    ports:
+      - "${MONGODB_PORT}:27017"
+    volumes:
+      - ./data/mongodb/data:/data/db
+    networks:
+      - develop
+
+  nui:
+    image: ghcr.io/nats-nui/nui
+    ports:
+      - "31311:31311"
+    volumes:
+      - ./data/nuidb:/db
+    networks:
+      - develop
+
+  nats:
+    image: nats
+    container_name: nats
+    restart: always
+    env_file: env/nats.env
+    # command: ['-js', '-m', '8222', '-p', '4222']
+    command: "--http_port 8222 --user lf-test --pass Gie4CheiboSei3quhaeW9aek --jetstream"
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - develop
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: always
+    ports:
+      - '${MYSQL_ADMINER_PORT}:8080'
+    networks:
+      - develop
+
+  plantuml-server:
+    # build:
+    #   context: ./data/plantuml
+    #   dockerfile: Dockerfile.jetty
+    image: plantuml/plantuml-server:jetty
+    container_name: plantuml-server
+    env_file: env/plantuml.env
+    ports:
+      - 8065:8080
+    networks:
+      - develop
+
+  localstack:
+    image: localstack/localstack
+    container_name: localstack
+    ports:
+      - '4563-4599:4563-4599'
+      - '8055:8080'
+    env_file: .env
+    volumes:
+      - ./data/localstack:/data/localstack
+      - ./aws/commands:/docker-entrypoint-initaws.d
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - develop
+
+  sonarqube:
+    image: sonarqube:8.9.2-community
+    container_name: sonarqube
+    platform: linux/amd64
+    restart: always
+    ports:
+      - '9000:9000'
+    volumes:
+      - ./config/sonarqube/extensions:/opt/sonarqube/extensions
+    networks:
+      - develop
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    restart: always
+    # restart: unless-stopped
+    # hostname: mosquitto
+    env_file: env/mosquitto.env
+    ports:
+      - 1883:1883
+      - 9001:9001
+    volumes:
+      - ./data/mosquitto:/etc/mosquitto
+      - ./data/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - develop
+
+  rabbitmq:
+    build:
+      context: data/rabbitmq
+      dockerfile: Dockerfile
+    container_name: rabbitmq
+    restart: always
+    env_file: env/rabbitmq.env
+    ports:
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - ./data/rabbitmq/data/:/var/lib/rabbitmq/
+      - ./data/rabbitmq/log/:/var/log/rabbitmq/
+    networks:
+      - develop
+
+  haproxy:
+    image: haproxy:latest
+    container_name: haproxy
+    volumes:
+      - ./rabbitmq/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - rabbitmq
+    ports:
+      # HOST:CONTAINER
+      - 15672:15672
+      - 5672:5672
+    networks:
+      - develop
+
+  test:
+    build:
+      context: .
+      dockerfile: test-node/Dockerfile
+    container_name: test
+    volumes:
+      - ./test-node:/app
+    ports:
+      - 3007:3007
+    networks:
+        - develop
+
+networks:
+  develop:
+    driver: bridge
+
+# volumes:
+#   kong_prefix_vol:
+#     driver_opts:
+#       type: tmpfs
+#       device: tmpfs
+#   kong_tmp_vol:
+#     driver_opts:
+#       type: tmpfs
+#       device: tmpfs
+#   kong_config_vol:
+#     external: true

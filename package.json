@@ -1,0 +1,17 @@
+{
+  "name": "docker",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "ad": "yarn up adminer",
+    "down": "docker compose down",
+    "kc": "yarn up keycloak",
+    "kong": "yarn up kong",
+    "kong-setup": "yarn up kong-setup",
+    "ls": "yarn up localstack",
+    "pg": "yarn up postgres",
+    "sq": "yarn up sonarqube",
+    "up": "docker compose up -d"
+  }
+}
