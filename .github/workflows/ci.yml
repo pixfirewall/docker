@@ -23,7 +23,7 @@ jobs:
         run: docker compose --profile '*' config --quiet
 
       - name: ShellCheck
-        run: shellcheck certs/generate_ca.sh data/postgres/init/*.sh data/kong/observability-plugins.sh
+        run: shellcheck certs/generate_ca.sh data/postgres/init/*.sh data/kong/observability-plugins.sh data/nextcloud/hooks/*/*.sh
 
       - name: Hadolint
         uses: hadolint/hadolint-action@v3.5.0

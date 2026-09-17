@@ -59,6 +59,29 @@ Not started unless their [profile](https://docs.docker.com/compose/how-tos/profi
 | `kafka` | `kafka-ui` | Kafka web UI (topics, consumer groups, messages) | 8090 |
 | `search` | `opensearch` | OpenSearch (Elasticsearch compatible API), security disabled | 9200 |
 | `search` | `opensearch-dashboards` | OpenSearch web UI (Kibana fork) | 5601 |
+
+### Self-hosted apps (profiles)
+
+Popular self-hosted applications, each group in its own profile. `--profile selfhosted` starts all of them.
+
+| Profile | Service | Purpose | Host ports |
+|---|---|---|---|
+| `cloud` | `nextcloud` (+ `nextcloud-cron`) | Files, calendar, contacts, office; uses the shared Postgres and Redis | 8084 |
+| `photos` | `immich-server` (+ `immich-machine-learning`, `immich-redis`, `immich-database`) | Google Photos alternative: photo / video backup, face & object search | 2283 |
+| `media` | `jellyfin` | Media server for movies and series in `data/media` | 8096 |
+| `media` | `navidrome` | Music streaming (Subsonic API) for `data/media/music` | 4534 |
+| `smarthome` | `homeassistant` | Home automation, the `mosquitto` service can be its MQTT broker | 8123 |
+| `dns` | `adguard` | AdGuard Home, network-wide DNS ad / tracker blocking | 53 (DNS), 3002 (setup), 8083 (UI) |
+| `admin` | `portainer` | Docker management UI | 9443 (HTTPS) |
+| `admin` | `uptime-kuma` | Uptime monitoring with notifications | 3001 |
+| `apps` | `vaultwarden` | Bitwarden compatible password manager | 8085 |
+| `apps` | `forgejo` | Git hosting (Gitea fork): repositories, issues, pull requests, CI | 3003, 2222 (SSH) |
+| `apps` | `n8n` | Workflow automation (Zapier alternative) | 5678 |
+| `apps` | `paperless` | Paperless-ngx document archive with OCR | 8010 |
+| `apps` | `stirling-pdf` | Merge, split, convert, OCR PDFs | 8086 |
+| `apps` | `syncthing` | Peer-to-peer file synchronisation | 8384, 22000, 21027/udp |
+| `apps` | `it-tools` | Handy developer utilities (JWT decoder, hashes, converters, ...) | 8087 |
+| `apps` | `excalidraw` | Whiteboard / hand-drawn diagrams | 8088 |
 | `haproxy` | `haproxy` | Load balancer in front of RabbitMQ (bring your own config) | 5673, 15673 |
 
 ## 📋 Prerequisites
@@ -83,6 +106,10 @@ docker compose --profile tools up -d
 
 # default services + tools + observability
 docker compose --profile tools --profile observability up -d
+
+# self-hosted apps: one group or all of them
+docker compose --profile media up -d
+docker compose --profile selfhosted up -d
 
 # Kafka or OpenSearch together with their UI
 docker compose --profile kafka up -d kafka kafka-ui
@@ -115,7 +142,7 @@ docker compose --profile '*' down        # stop and remove all containers (data 
 docker compose --profile '*' down -v     # ... and remove the named volumes (grafana, prometheus, loki, kafka, opensearch, ...)
 ```
 
-Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/pgdata`). Stop the service and delete that directory to start from scratch.
+Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/pg18`). Stop the service and delete that directory to start from scratch.
 
 ### package.json shortcuts
 
@@ -125,6 +152,8 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | `yarn tools` / `yarn obs` / `yarn all` | default services + tools / + observability / + every optional profile |
 | `yarn kafka` / `yarn search` | Kafka + Kafka UI / OpenSearch + Dashboards |
 | `yarn home` | landing page on http://localhost:3080 |
+| `yarn selfhosted` | every self-hosted app |
+| `yarn cloud`, `yarn photos`, `yarn media`, `yarn smarthome`, `yarn portainer` | Nextcloud, Immich, Jellyfin + Navidrome, Home Assistant + Mosquitto, Portainer |
 | `yarn kong`, `yarn kc`, `yarn pg`, `yarn ad`, `yarn ls`, `yarn sq` | start Kong, Keycloak, Postgres, Adminer, LocalStack, SonarQube |
 | `yarn ps`, `yarn logs` | status, follow logs |
 | `yarn down` | stop everything, including optional services |
@@ -149,6 +178,7 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
    - vault.env
    - postgres-exporter.env
    - mongodb-exporter.env
+   - nextcloud.env, immich.env, vaultwarden.env, forgejo.env, n8n.env, paperless.env
    - nats.env
    - mosquitto.env
    - rabbitmq.env
@@ -196,6 +226,22 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | Kafka UI | http://localhost:8090 | |
 | OpenSearch | http://localhost:9200 | |
 | OpenSearch Dashboards | http://localhost:5601 | |
+| Nextcloud | http://localhost:8084 | `admin` / `admin` |
+| Immich | http://localhost:2283 | create the admin on first visit |
+| Jellyfin | http://localhost:8096 | create the admin on first visit |
+| Navidrome | http://localhost:4534 | create the admin on first visit |
+| Home Assistant | http://localhost:8123 | create the owner on first visit |
+| AdGuard Home | setup http://localhost:3002, then http://localhost:8083 | chosen in the setup wizard |
+| Portainer | https://localhost:9443 | create the admin within 5 minutes of the first start |
+| Uptime Kuma | http://localhost:3001 | create the admin on first visit |
+| Vaultwarden | http://localhost:8085, admin panel `/admin` | sign up; admin token `admin` |
+| Forgejo | http://localhost:3003, `ssh://git@localhost:2222` | create with the command in [Forgejo](#forgejo) |
+| n8n | http://localhost:5678 | create the owner on first visit |
+| Paperless-ngx | http://localhost:8010 | `admin` / `admin` |
+| Stirling PDF | http://localhost:8086 | |
+| Syncthing | http://localhost:8384 | set a GUI password in the settings |
+| IT-Tools | http://localhost:8087 | |
+| Excalidraw | http://localhost:8088 | |
 
 From inside other containers use the service name as host, e.g. `postgres:5432`, `redis:6379`, `mailpit:1025`, `jaeger:4318`.
 
@@ -277,16 +323,98 @@ Start it with `docker compose --profile observability up -d`, it includes everyt
 - **Traces**: the `kong-observability` one-shot enables Kong's `prometheus` and `opentelemetry` plugins (script: `data/kong/observability-plugins.sh`), so every request proxied by Kong shows up in Jaeger (http://localhost:16686) as service `kong`. Your own applications can export OpenTelemetry traces to `http://localhost:4318` (or `http://jaeger:4318` from a container), e.g. with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
 - To enable the Kong plugins again, e.g. after resetting the Postgres data: `docker compose --profile observability up kong-observability`.
 
+### Self-hosted apps
+These are meant for trying out / developing against the apps locally. All credentials are defaults, change them (and read each project's hardening guide) before exposing anything to a network.
+
+Data lives in named volumes (`docker compose --profile '*' down -v` removes it) except the files you are likely to add yourself:
+
+| Path | Used by |
+|---|---|
+| `data/media/` | Jellyfin library (add it in the Jellyfin setup as `/media`) |
+| `data/media/music/` | Navidrome library |
+| `data/immich/library/` | Immich uploads |
+| `data/paperless/consume/` | Paperless-ngx: files dropped here are imported automatically |
+| `data/homeassistant/config/` | Home Assistant configuration (`configuration.yaml`, ...) |
+| `data/syncthing/` | Syncthing configuration and synced folders |
+
+#### Nextcloud
+- Installed automatically on first start with `admin` / `admin`, using the shared `postgres` (database `nextcloud`, created by the installer) and `redis` services. The first start takes a minute or two.
+- Background jobs run in `nextcloud-cron`; set *Administration settings → Basic settings → Background jobs* to *Cron*.
+- Run `occ` commands: `docker compose exec -u www-data nextcloud php occ status`.
+
+#### Immich
+- Follows the upstream setup: its own Postgres (with the vector extensions Immich needs) and Valkey, plus the machine learning container for face / object recognition. The ML container downloads models on first use (~1 GB).
+- Mobile app server URL: `http://<your-machine-ip>:2283`.
+
+#### Jellyfin / Navidrome
+- Put videos in `data/media` and music in `data/media/music`, both are mounted read-only.
+- Jellyfin: add a library pointing at `/media` in the setup wizard. Navidrome scans `/music` every hour (or trigger a scan in the UI).
+
+#### Home Assistant
+- Runs on the bridge network so it works with Docker Desktop. Auto-discovery of devices (mDNS, UPnP, Bluetooth) needs `network_mode: host` on a Linux host.
+- MQTT: add the MQTT integration with broker `mosquitto`, port `1883` and the user from `data/mosquitto/mosquitto.passwd`.
+
+#### AdGuard Home
+- First start: open the setup wizard on http://localhost:3002 and choose **port 80** for the admin web interface (published as http://localhost:8083) and port 53 for DNS.
+- Test it: `dig @127.0.0.1 example.com` (or `nslookup example.com 127.0.0.1`).
+- If port 53 is already used (systemd-resolved on Linux), set `ADGUARD_DNS_PORT=5353` in `.env`, or disable the stub listener.
+
+#### Portainer
+- For security Portainer stops if no admin is created within 5 minutes of the first start. If that happens: `docker compose restart portainer`.
+
+#### Forgejo
+- The install page is skipped (SQLite database). Create the first admin:
+  ```bash
+  docker compose exec -u git forgejo forgejo admin user create --admin --username dev --password devdevdev --email dev@example.com --must-change-password=false
+  ```
+- Clone via SSH: `git clone ssh://git@localhost:2222/dev/<repo>.git`.
+
+#### n8n / Vaultwarden / Paperless-ngx
+- **n8n** can reach every service of the stack by its name, e.g. `http://wiremock:8080`, `postgres:5432`, `mailpit:1025`.
+- **Vaultwarden** works over plain HTTP on `localhost` in the browser; the Bitwarden mobile / desktop apps require HTTPS.
+- **Paperless-ngx** uses SQLite and the shared `redis` (database 2), and OCRs documents in English (`PAPERLESS_OCR_LANGUAGE`).
+
 ### HAProxy
 Not started by default. Add `data/haproxy/haproxy.cfg` and run `docker compose --profile haproxy up -d haproxy` (exposed on 5673 / 15673 so it does not clash with RabbitMQ).
+
+## ⬆️ Upgrading databases
+
+Image versions are kept up to date by Dependabot. Major versions of databases usually change the on-disk format, so Dependabot is configured to **not** propose major upgrades for `postgres`, `mysql`, `mongo`, `sonarqube`, `opensearch` and `kafka`; do those manually.
+
+### Upgrading Postgres
+
+The stack moved from `postgres:14` to `postgres:18`. Postgres 18 keeps its data in `data/postgres/data/pg18`, the old data in `data/postgres/data/pgdata` is left untouched. To take your old databases along:
+
+```bash
+docker compose down
+
+# 1. dump everything from the old data directory with a temporary postgres 14 container
+docker run -d --name pg14-export -e POSTGRES_PASSWORD=test \
+  -v "$PWD/data/postgres/data/pgdata:/var/lib/postgresql/data" postgres:14-alpine
+docker exec pg14-export pg_isready -U test   # repeat until "accepting connections"
+docker exec pg14-export pg_dumpall -U test --clean --if-exists > data/postgres/pg14-dump.sql
+docker rm -f pg14-export
+
+# 2. start only the new postgres and restore the dump
+docker compose up -d --wait postgres
+docker compose exec -T postgres psql -U test -d postgres < data/postgres/pg14-dump.sql
+#    "current user cannot be dropped" / "role test already exists" errors are expected
+
+# 3. start the rest; once everything works remove data/postgres/data/pgdata and the dump
+docker compose up -d
+```
+
+MySQL moved from 5.7 to 8.0, which upgrades the data directory in place on the first start (there is no way back to 5.7 afterwards, back up `data/mysql/data/db` first).
 
 ## 🩺 Troubleshooting
 
 - **`port is already allocated` / `address already in use`**: another process uses the host port. Change the port in `.env` (e.g. `GRAFANA_PORT=3001`, `POSTGRES_PORT=5433`) or stop the other process (`lsof -nP -iTCP:<port> -sTCP:LISTEN`).
 - **`kong` does not start**: check `docker compose logs kong-setup`; the migrations need Postgres and the `kong` database. On an existing Postgres data directory created before the init script existed, create it manually: `docker compose exec postgres psql -U test -c 'CREATE DATABASE kong'` (same for `keycloak`).
 - **Keycloak / Kong TLS errors**: run `./certs/generate_ca.sh` and restart the services. Trust `certs/ca.pem` in your OS / browser, or use `curl --cacert certs/ca.pem`.
-- **Apple Silicon**: `mysql` (5.7) and `sonarqube` (8.9) only exist for amd64 and run emulated, so they start slower.
+- **Postgres fails with `in 18+, these Docker images are configured to store database data in a format ...`**: an old compose file mounts `/var/lib/postgresql/data`; use the current `docker-compose.yml` and see [Upgrading Postgres](#upgrading-postgres).
 - **Grafana data source changes are not picked up**: provisioning is read at startup, run `docker compose restart grafana`.
+- **`bind: address already in use` for port 53**: see [AdGuard Home](#adguard-home).
+- **Immich / Nextcloud are slow or restart**: both need memory (Immich ML ~1-2 GB); start them on their own, e.g. `docker compose --profile photos up -d`.
 - **Grafana panels show `Plugin not registered`**: Grafana downloads some data source plugins (e.g. Prometheus) from grafana.com on its first start. If that download failed (offline, slow machine), run `docker compose restart grafana`.
 - **A container is `unhealthy`**: `docker inspect --format '{{json .State.Health}}' <container>` shows the output of the last health checks.
 - **OpenSearch / Kafka exit with code 137**: out of memory, increase the memory of Docker Desktop or start fewer services.
@@ -321,7 +449,12 @@ Dependabot (`.github/dependabot.yml`) opens weekly pull requests for image, npm 
 │ ├── grafana/       (provisioned data sources and dashboards)
 │ ├── alloy/         (log collection configuration)
 │ ├── homepage/      (landing page configuration)
-│ └── wiremock/      (API mock mappings and response files)
+│ ├── wiremock/      (API mock mappings and response files)
+│ ├── media/         (Jellyfin / Navidrome libraries)
+│ ├── immich/        (Immich uploads)
+│ ├── paperless/     (Paperless-ngx consume folder)
+│ ├── homeassistant/ (Home Assistant configuration)
+│ └── syncthing/     (Syncthing data)
 ├── env/
 │ └── (environment files)
 ├── certs/
@@ -339,6 +472,8 @@ Dependabot (`.github/dependabot.yml`) opens weekly pull requests for image, npm 
 - Kong is configured with no-new-privileges security option
 - `dozzle`, `homepage`, `alloy` and `localstack` get access to the Docker socket; don't expose them beyond your machine
 - `vault` runs in dev mode with a well-known root token
+- `portainer` and `uptime-kuma` also get the Docker socket (Portainer with write access = full control over Docker)
+- The self-hosted apps use default credentials and plain HTTP; they are not hardened for exposure to a network
 
 ## 📄 License
 
