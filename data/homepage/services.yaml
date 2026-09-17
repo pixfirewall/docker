@@ -281,3 +281,9 @@
         description: "SMTP localhost:1588 -> Mailpit"
         server: local
         container: opensmtpd
+- Proxy:
+    - Nginx Proxy Manager:
+        href: http://localhost:81
+        description: "Reverse proxy admin (admin@example.com / changeme)"
+        server: local
+        container: nginx-proxy-manager
