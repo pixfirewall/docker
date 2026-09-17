@@ -233,3 +233,51 @@
         description: "Whiteboard / diagrams"
         server: local
         container: excalidraw
+- Mail:
+    - Mailpit:
+        href: http://localhost:8025
+        description: "Catches all outgoing mail"
+        server: local
+        container: mailpit
+    - Stalwart:
+        href: http://localhost:8480/admin
+        description: "Mail server admin (admin / admin)"
+        server: local
+        container: stalwart
+    - docker-mailserver:
+        description: "Postfix + Dovecot, IMAP localhost:3143"
+        server: local
+        container: docker-mailserver
+    - Mailu:
+        href: https://localhost:8481
+        description: "Admin & webmail (admin@example.test)"
+        server: local
+        container: mailu-front
+    - mailcow:
+        href: https://localhost:8486
+        description: "scripts/mailcow.sh (admin / moohoo)"
+        server: local
+        container: mailcowdockerized-nginx-mailcow-1
+    - Postal:
+        href: http://localhost:8482
+        description: "Mail delivery platform"
+        server: local
+        container: postal-web
+    - Plunk:
+        href: http://app.localhost:8483
+        description: "Email platform (SES via LocalStack)"
+        server: local
+        container: plunk
+    - listmonk:
+        href: http://localhost:8484
+        description: "Newsletters (admin / admin-password-123)"
+        server: local
+        container: listmonk
+    - Postfix relay:
+        description: "SMTP localhost:1587 -> Mailpit"
+        server: local
+        container: postfix
+    - OpenSMTPD relay:
+        description: "SMTP localhost:1588 -> Mailpit"
+        server: local
+        container: opensmtpd

@@ -1,0 +1,4 @@
+# docker-mailserver writes generated files (DKIM keys, dovecot quotas, ...) here, only the seed accounts are tracked
+/*
+!/.gitignore
+!/postfix-accounts.cf
