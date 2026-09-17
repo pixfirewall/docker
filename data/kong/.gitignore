@@ -2,3 +2,4 @@
 !/.gitignore
 !/Dockerfile
 !/kong.yaml
+!/observability-plugins.sh

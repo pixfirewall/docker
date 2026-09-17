@@ -1,0 +1,23 @@
+title: Dev stack
+headerStyle: clean
+statusStyle: dot
+hideVersion: true
+layout:
+  API & Auth:
+    style: row
+    columns: 3
+  Databases:
+    style: row
+    columns: 4
+  Messaging:
+    style: row
+    columns: 4
+  Developer tools:
+    style: row
+    columns: 4
+  Observability:
+    style: row
+    columns: 4
+  Kafka & Search:
+    style: row
+    columns: 4

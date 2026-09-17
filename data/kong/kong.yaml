@@ -21,10 +21,10 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/dev/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/dev/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: product-management-api-route
@@ -36,10 +36,10 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/dev/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/dev/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: rule-management-api-route
@@ -56,10 +56,10 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/dev/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/dev/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: product-management-internal-api-route

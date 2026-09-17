@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/hello/([a-z]+)"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "message": "Hello {{request.path.[1]}}",
+      "requestId": "{{randomValue type='UUID'}}"
+    }
+  }
+}

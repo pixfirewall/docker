@@ -5,9 +5,11 @@
   "license": "MIT",
   "scripts": {
     "ad": "docker compose up -d adminer",
-    "all": "docker compose --profile tools --profile observability up -d",
+    "all": "docker compose --profile tools --profile observability --profile kafka --profile search up -d",
     "certs": "./certs/generate_ca.sh",
     "down": "docker compose --profile '*' down",
+    "home": "docker compose --profile tools up -d homepage",
+    "kafka": "docker compose --profile kafka up -d kafka kafka-ui",
     "kc": "docker compose up -d keycloak",
     "kong": "docker compose up -d kong",
     "kong-setup": "docker compose up -d kong-setup",
@@ -16,6 +18,7 @@
     "obs": "docker compose --profile observability up -d",
     "pg": "docker compose up -d postgres",
     "ps": "docker compose ps",
+    "search": "docker compose --profile search up -d opensearch opensearch-dashboards",
     "sq": "docker compose up -d sonarqube",
     "tools": "docker compose --profile tools up -d",
     "up": "docker compose up -d"
