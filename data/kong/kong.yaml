@@ -4,14 +4,13 @@ _transform: true
 
 services:
   - name: device-management-service
-    url: http://host.docker.internal
-    port: 3010
+    url: http://host.docker.internal:3010
 
     routes:
       - name: device-management-api-route
         paths:
-          - /home/[^/]+/device
-          - /v1/home/[^/]+/device
+          - ~/home/[^/]+/device
+          - ~/v1/home/[^/]+/device
         regex_priority: 100
         strip_path: false
         plugins:
@@ -22,10 +21,10 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: product-management-api-route
@@ -37,16 +36,16 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: rule-management-api-route
         paths:
-          - /home/[^/]+/rules
-          - /v1/home/[^/]+/rules
+          - ~/home/[^/]+/rules
+          - ~/v1/home/[^/]+/rules
         regex_priority: 100
         strip_path: false
         plugins:
@@ -57,10 +56,10 @@ services:
           - name: oidc
             enabled: true
             config:
-              discovery: https://localhost:8445/realms/master/.well-known/openid-configuration
+              discovery: https://keycloak:8443/realms/master/.well-known/openid-configuration
               client_id: kong-oidc
               client_secret: fVnDuSnOY8Z0i6Celg089lqccLK5ZSb5
-              introspection_endpoint: https://localhost:8445/realms/master/protocol/openid-connect/token/introspect
+              introspection_endpoint: https://keycloak:8443/realms/master/protocol/openid-connect/token/introspect
               bearer_only: 'yes'
 
       - name: product-management-internal-api-route

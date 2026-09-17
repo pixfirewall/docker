@@ -1,18 +1,14 @@
 ARG RABBITMQ_VERSION=3.13.0
 FROM rabbitmq:${RABBITMQ_VERSION}-management
 
-ARG DELAYED_MESSAGE_PLUGIN_VERSION=3.13.0
+# The delayed message exchange plugin version has to match the RabbitMQ version
+ARG RABBITMQ_VERSION
+ARG DELAYED_MESSAGE_PLUGIN_VERSION=${RABBITMQ_VERSION}
 
-# Ensure apt-get is up to date
-RUN apt-get update && apt-get install -y wget
+ADD --chmod=644 \
+    "https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v${DELAYED_MESSAGE_PLUGIN_VERSION}/rabbitmq_delayed_message_exchange-${DELAYED_MESSAGE_PLUGIN_VERSION}.ez" \
+    /opt/rabbitmq/plugins/
 
-# Use the ARG in the wget command
-RUN wget "https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v${DELAYED_MESSAGE_PLUGIN_VERSION}/rabbitmq_delayed_message_exchange-${DELAYED_MESSAGE_PLUGIN_VERSION}.ez"
-
-# Move the downloaded plugin to the plugins directory
-RUN mv "rabbitmq_delayed_message_exchange-${DELAYED_MESSAGE_PLUGIN_VERSION}.ez" /opt/rabbitmq/plugins/
-
-# Enable the plugin
 RUN rabbitmq-plugins enable --offline rabbitmq_delayed_message_exchange
 
 # Expose necessary ports

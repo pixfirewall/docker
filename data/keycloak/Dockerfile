@@ -1,4 +1,4 @@
-FROM quay.io/keycloak/keycloak:latest as builder
+FROM quay.io/keycloak/keycloak:latest AS builder
 
 ARG KC_HEALTH_ENABLED
 ARG KC_METRICS_ENABLED

@@ -1,17 +1,20 @@
 {
   "name": "docker",
   "version": "1.0.0",
+  "private": true,
   "license": "MIT",
-  "main": "index.js",
   "scripts": {
-    "ad": "yarn up adminer",
+    "ad": "docker compose up -d adminer",
+    "certs": "./certs/generate_ca.sh",
     "down": "docker compose down",
-    "kc": "yarn up keycloak",
-    "kong": "yarn up kong",
-    "kong-setup": "yarn up kong-setup",
-    "ls": "yarn up localstack",
-    "pg": "yarn up postgres",
-    "sq": "yarn up sonarqube",
+    "kc": "docker compose up -d keycloak",
+    "kong": "docker compose up -d kong",
+    "kong-setup": "docker compose up -d kong-setup",
+    "logs": "docker compose logs -f",
+    "ls": "docker compose up -d localstack",
+    "pg": "docker compose up -d postgres",
+    "ps": "docker compose ps",
+    "sq": "docker compose up -d sonarqube",
     "up": "docker compose up -d"
   }
 }
