@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # requires the prometheus plugin to be enabled in Kong, see README
+  - job_name: kong
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["kong:8001"]
+
+  # Keycloak serves metrics on its management interface, which uses the same certificate as the main server
+  - job_name: keycloak
+    scheme: https
+    metrics_path: /metrics
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.pem
+      server_name: keycloak
+    static_configs:
+      - targets: ["keycloak:9000"]
+
+  - job_name: rabbitmq
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  - job_name: jaeger
+    static_configs:
+      - targets: ["jaeger:8888"]

@@ -5,16 +5,19 @@
   "license": "MIT",
   "scripts": {
     "ad": "docker compose up -d adminer",
+    "all": "docker compose --profile tools --profile observability up -d",
     "certs": "./certs/generate_ca.sh",
-    "down": "docker compose down",
+    "down": "docker compose --profile '*' down",
     "kc": "docker compose up -d keycloak",
     "kong": "docker compose up -d kong",
     "kong-setup": "docker compose up -d kong-setup",
     "logs": "docker compose logs -f",
     "ls": "docker compose up -d localstack",
+    "obs": "docker compose --profile observability up -d",
     "pg": "docker compose up -d postgres",
     "ps": "docker compose ps",
     "sq": "docker compose up -d sonarqube",
+    "tools": "docker compose --profile tools up -d",
     "up": "docker compose up -d"
   }
 }
