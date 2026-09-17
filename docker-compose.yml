@@ -85,7 +85,7 @@ services:
       - develop
 
   redis:
-    image: redis:6.2-alpine
+    image: redis:8.10-alpine
     container_name: redis
     restart: always
     # env_file: env/redis.env
@@ -103,7 +103,7 @@ services:
       - develop
 
   postgres:
-    image: postgres:14-alpine
+    image: postgres:18-alpine
     container_name: postgres
     restart: always
     env_file: env/postgres.env
@@ -127,7 +127,7 @@ services:
       - develop
 
   mysql:
-    image: mysql/mysql-server:5.7
+    image: mysql/mysql-server:8.0
     container_name: mysql
     # mysql/mysql-server:5.7 is only published for amd64
     platform: linux/amd64
@@ -224,7 +224,7 @@ services:
       - develop
 
   sonarqube:
-    image: sonarqube:8.9.2-community
+    image: sonarqube:26.9.0.129388-community
     container_name: sonarqube
     platform: linux/amd64
     restart: always
