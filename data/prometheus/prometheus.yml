@@ -13,13 +13,9 @@ scrape_configs:
     static_configs:
       - targets: ["kong:8001"]
 
-  # Keycloak serves metrics on its management interface, which uses the same certificate as the main server
+  # Keycloak serves metrics on its management interface (plain HTTP, only reachable inside the network)
   - job_name: keycloak
-    scheme: https
     metrics_path: /metrics
-    tls_config:
-      ca_file: /etc/prometheus/certs/ca.pem
-      server_name: keycloak
     static_configs:
       - targets: ["keycloak:9000"]
 
