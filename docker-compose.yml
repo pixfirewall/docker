@@ -72,8 +72,15 @@ services:
       - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs/conf/keys
       - ./data/keycloak/import:/opt/keycloak/data/import:ro
     healthcheck:
-      # the image has no curl, check that the management interface (health/metrics) accepts connections
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000"]
+      # Keycloak answers 503 while bootstrapping (database schema, realm import) even though its ports are open,
+      # so ask the readiness endpoint. The image has no curl: plain HTTP request via bash /dev/tcp
+      # (the management interface uses HTTP, see KC_HTTP_MANAGEMENT_SCHEME in env/keycloak.env).
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          head -n 1 <&3 | grep -q ' 200 '
       interval: 10s
       timeout: 5s
       retries: 30
