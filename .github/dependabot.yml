@@ -18,6 +18,8 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "apache/kafka"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "mariadb"
+        update-types: ["version-update:semver-major"]
     groups:
       compose-images:
         patterns: ["*"]

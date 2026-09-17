@@ -326,8 +326,8 @@ services:
   mailpit:
     image: axllent/mailpit:${MAILPIT_VERSION:-v1.31}
     container_name: mailpit
-    profiles:
-      - tools
+    # also part of every mail profile: the mail servers / relays below deliver outgoing mail to Mailpit
+    profiles: [tools, mail, stalwart, mailserver, mailu, postal, listmonk, relay]
     restart: unless-stopped
     environment:
       # accept any SMTP credentials without TLS, so apps configured with auth work too
@@ -1034,9 +1034,425 @@ services:
     networks:
       - develop
 
+  # ===========================================================================
+  # Mail servers and mail services. Each has its own profile, `mail` starts all of them.
+  # Outgoing mail to other domains is relayed to Mailpit (http://localhost:8025) where possible.
+  # Mailcow is managed by scripts/mailcow.sh (separate compose project).
+  # ===========================================================================
+
+  # one-shot: creates the databases of listmonk and plunk in the shared postgres (idempotent)
+  postgres-databases:
+    image: postgres:18-alpine
+    container_name: postgres-databases
+    profiles: [mail, listmonk, plunk]
+    env_file: env/postgres.env
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: test
+      DATABASES: listmonk plunk
+    volumes:
+      - ./data/postgres/init:/init:ro
+    command: ["sh", "/init/01-create-databases.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - develop
+
+  # --- stalwart: Stalwart Mail Server (SMTP, IMAP, JMAP, CalDAV, web admin) ---
+
+  stalwart:
+    image: stalwartlabs/stalwart:${STALWART_VERSION:-v0.16.22}
+    container_name: stalwart
+    profiles: [mail, stalwart]
+    restart: unless-stopped
+    env_file: env/stalwart.env
+    # first start: completes the setup wizard via the API and creates the dev mailbox
+    entrypoint: ["/bin/sh", "/setup/entrypoint.sh"]
+    ports:
+      # Stalwart's default listeners: SMTP 25, submission over TLS 465, IMAPS 993, web 8080
+      - "${STALWART_SMTP_PORT:-2525}:25"
+      - "${STALWART_SMTPS_PORT:-2465}:465"
+      - "${STALWART_IMAPS_PORT:-2993}:993"
+      - "${STALWART_WEB_PORT:-8480}:8080"
+    volumes:
+      - ./data/stalwart/entrypoint.sh:/setup/entrypoint.sh:ro
+      - stalwart_etc:/etc/stalwart
+      - stalwart_data:/var/lib/stalwart
+    networks:
+      - develop
+
+  # --- mailserver: docker-mailserver (Postfix, Dovecot) ------------------------
+
+  docker-mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:${DOCKER_MAILSERVER_VERSION:-16.0.1}
+    container_name: docker-mailserver
+    profiles: [mail, mailserver]
+    restart: unless-stopped
+    hostname: mail.example.test
+    env_file: env/docker-mailserver.env
+    ports:
+      - "${DMS_SMTP_PORT:-3525}:25"
+      - "${DMS_SUBMISSION_PORT:-3587}:587"
+      - "${DMS_SMTPS_PORT:-3465}:465"
+      - "${DMS_IMAP_PORT:-3143}:143"
+      - "${DMS_IMAPS_PORT:-3993}:993"
+    volumes:
+      # accounts (postfix-accounts.cf), aliases, DKIM keys, ...
+      - ./data/docker-mailserver/config:/tmp/docker-mailserver
+      - ${SSL_CERTS_LOCATION:-./certs}:/certs:ro
+      - dms_mail_data:/var/mail
+      - dms_mail_state:/var/mail-state
+    healthcheck:
+      test: ["CMD-SHELL", "ss --listening --tcp | grep -P 'LISTEN.+:smtp' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    networks:
+      - develop
+
+  # --- mailu: Mailu (Postfix, Dovecot, Rspamd, Roundcube, admin UI) -----------
+  # Mailu requires a DNSSEC validating resolver at a fixed address, so it has its own network.
+
+  mailu-resolver:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/unbound:${MAILU_VERSION:-2024.06}
+    container_name: mailu-resolver
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    networks:
+      mailu:
+        ipv4_address: 192.168.203.254
+
+  mailu-redis:
+    image: redis:8.10-alpine
+    container_name: mailu-redis
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    volumes:
+      - mailu_redis:/data
+    dns: [192.168.203.254]
+    depends_on: [mailu-resolver]
+    networks:
+      mailu:
+        aliases: [redis]
+
+  mailu-front:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/nginx:${MAILU_VERSION:-2024.06}
+    container_name: mailu-front
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    ports:
+      # Mailu's default ports: SMTP 25, submission over TLS 465, IMAPS 993, HTTPS 443
+      - "${MAILU_WEB_PORT:-8481}:443"
+      - "${MAILU_SMTP_PORT:-4525}:25"
+      - "${MAILU_SMTPS_PORT:-4465}:465"
+      - "${MAILU_IMAPS_PORT:-4993}:993"
+    volumes:
+      # TLS_FLAVOR=cert: the development certificate from ./certs
+      - ${SSL_CERTS_LOCATION:-./certs}/ca.pem:/certs/cert.pem:ro
+      - ${SSL_CERTS_LOCATION:-./certs}/ca.key:/certs/key.pem:ro
+    dns: [192.168.203.254]
+    depends_on: [mailu-resolver]
+    networks:
+      mailu:
+        aliases: [front]
+
+  mailu-admin:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/admin:${MAILU_VERSION:-2024.06}
+    container_name: mailu-admin
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    volumes:
+      - mailu_data:/data
+      - mailu_dkim:/dkim
+    dns: [192.168.203.254]
+    depends_on: [mailu-redis, mailu-resolver]
+    networks:
+      mailu:
+        aliases: [admin]
+
+  mailu-imap:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/dovecot:${MAILU_VERSION:-2024.06}
+    container_name: mailu-imap
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    volumes:
+      - mailu_mail:/mail
+    dns: [192.168.203.254]
+    depends_on: [mailu-front, mailu-resolver]
+    networks:
+      mailu:
+        aliases: [imap]
+
+  mailu-smtp:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/postfix:${MAILU_VERSION:-2024.06}
+    container_name: mailu-smtp
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    volumes:
+      - mailu_queue:/queue
+    dns: [192.168.203.254]
+    depends_on: [mailu-front, mailu-resolver]
+    networks:
+      mailu:
+        aliases: [smtp]
+      # to relay outgoing mail to mailpit
+      develop:
+
+  mailu-antispam:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/rspamd:${MAILU_VERSION:-2024.06}
+    container_name: mailu-antispam
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    hostname: antispam
+    env_file: env/mailu.env
+    volumes:
+      - mailu_filter:/var/lib/rspamd
+    dns: [192.168.203.254]
+    depends_on: [mailu-front, mailu-redis, mailu-resolver]
+    networks:
+      mailu:
+        aliases: [antispam]
+
+  mailu-webmail:
+    image: ${MAILU_REGISTRY:-ghcr.io/mailu}/webmail:${MAILU_VERSION:-2024.06}
+    container_name: mailu-webmail
+    profiles: [mail, mailu]
+    restart: unless-stopped
+    env_file: env/mailu.env
+    volumes:
+      - mailu_webmail:/data
+    dns: [192.168.203.254]
+    depends_on: [mailu-front, mailu-resolver]
+    networks:
+      mailu:
+        aliases: [webmail]
+
+  # --- postal: Postal mail delivery platform (web UI, SMTP, API, webhooks) -----
+  # Postal only publishes amd64 images, it runs emulated on Apple Silicon.
+
+  postal-mariadb:
+    image: mariadb:${POSTAL_MARIADB_VERSION:-11.8}
+    container_name: postal-mariadb
+    profiles: [mail, postal]
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: postal
+      MARIADB_DATABASE: postal
+    volumes:
+      - postal_mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - develop
+
+  # one-shot: signing key + database schema (idempotent)
+  postal-init:
+    image: ghcr.io/postalserver/postal:${POSTAL_VERSION:-3.3.7}
+    container_name: postal-init
+    profiles: [mail, postal]
+    platform: linux/amd64
+    env_file: env/postal.env
+    volumes:
+      - postal_config:/config
+    command: ["sh", "-c", "[ -f /config/signing.key ] || openssl genrsa -out /config/signing.key 2048; postal initialize"]
+    depends_on:
+      postal-mariadb:
+        condition: service_healthy
+    networks:
+      - develop
+
+  postal-web:
+    image: ghcr.io/postalserver/postal:${POSTAL_VERSION:-3.3.7}
+    container_name: postal-web
+    profiles: [mail, postal]
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file: env/postal.env
+    command: postal web-server
+    ports:
+      - "${POSTAL_WEB_PORT:-8482}:5000"
+    volumes:
+      - postal_config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  postal-smtp:
+    image: ghcr.io/postalserver/postal:${POSTAL_VERSION:-3.3.7}
+    container_name: postal-smtp
+    profiles: [mail, postal]
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file: env/postal.env
+    command: postal smtp-server
+    ports:
+      - "${POSTAL_SMTP_PORT:-5525}:25"
+    volumes:
+      - postal_config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  postal-worker:
+    image: ghcr.io/postalserver/postal:${POSTAL_VERSION:-3.3.7}
+    container_name: postal-worker
+    profiles: [mail, postal]
+    platform: linux/amd64
+    restart: unless-stopped
+    env_file: env/postal.env
+    command: postal worker
+    volumes:
+      - postal_config:/config
+    depends_on:
+      postal-init:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  # --- plunk: Plunk email platform (sends through AWS SES) ----------------------
+
+  plunk-minio:
+    image: quay.io/minio/minio:${PLUNK_MINIO_VERSION:-RELEASE.2025-09-07T16-13-09Z}
+    container_name: plunk-minio
+    profiles: [mail, plunk]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: plunk
+      MINIO_ROOT_PASSWORD: plunkminiopass
+    volumes:
+      - plunk_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - develop
+
+  plunk:
+    image: ghcr.io/useplunk/plunk:${PLUNK_VERSION:-0.14.0}
+    container_name: plunk
+    profiles: [mail, plunk]
+    restart: unless-stopped
+    env_file: env/plunk.env
+    ports:
+      # dashboard: http://app.localhost:8483, API: http://api.localhost:8483
+      - "${PLUNK_PORT:-8483}:80"
+    volumes:
+      - plunk_data:/app/data
+    depends_on:
+      postgres-databases:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      plunk-minio:
+        condition: service_healthy
+      # emulates AWS SES (see env/plunk.env)
+      localstack:
+        condition: service_healthy
+    networks:
+      - develop
+
+  # --- listmonk: newsletter and mailing list manager -------------------------
+
+  # one-shot: install / upgrade the listmonk schema (idempotent)
+  listmonk-install:
+    image: listmonk/listmonk:${LISTMONK_VERSION:-v6.2.0}
+    container_name: listmonk-install
+    profiles: [mail, listmonk]
+    env_file: env/listmonk.env
+    command: ["sh", "-c", "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config ''"]
+    depends_on:
+      postgres-databases:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  # one-shot: point listmonk's SMTP settings at mailpit, only while the install defaults are unchanged
+  listmonk-settings:
+    image: postgres:18-alpine
+    container_name: listmonk-settings
+    profiles: [mail, listmonk]
+    environment:
+      PGHOST: postgres
+      PGUSER: test
+      PGPASSWORD: test
+      PGDATABASE: listmonk
+    volumes:
+      - ./data/listmonk/defaults.sql:/defaults.sql:ro
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-f", "/defaults.sql"]
+    depends_on:
+      listmonk-install:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  listmonk:
+    image: listmonk/listmonk:${LISTMONK_VERSION:-v6.2.0}
+    container_name: listmonk
+    profiles: [mail, listmonk]
+    restart: unless-stopped
+    env_file: env/listmonk.env
+    command: ["./listmonk", "--config", ""]
+    ports:
+      - "${LISTMONK_PORT:-8484}:9000"
+    volumes:
+      - listmonk_uploads:/listmonk/uploads
+    depends_on:
+      listmonk-settings:
+        condition: service_completed_successfully
+    networks:
+      - develop
+
+  # --- relay: plain SMTP relays in front of Mailpit ---------------------------
+  # Point applications at them to test "real" MTA behaviour (queueing, retries, headers).
+  # Bound to 127.0.0.1 only: they relay mail from any sender.
+
+  postfix:
+    image: boky/postfix:${POSTFIX_RELAY_VERSION:-v5.1.0-alpine}
+    container_name: postfix
+    profiles: [mail, relay]
+    restart: unless-stopped
+    env_file: env/postfix.env
+    ports:
+      - "127.0.0.1:${POSTFIX_RELAY_PORT:-1587}:587"
+    networks:
+      - develop
+
+  opensmtpd:
+    image: local-opensmtpd:latest
+    build:
+      context: ./data/opensmtpd
+    container_name: opensmtpd
+    profiles: [mail, relay]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${OPENSMTPD_RELAY_PORT:-1588}:25"
+    networks:
+      - develop
+
 networks:
   develop:
     driver: bridge
+  mailu:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.203.0/24
 
 volumes:
   redisinsight_data:
@@ -1062,6 +1478,22 @@ volumes:
   paperless_data:
   paperless_media:
   stirling_pdf_configs:
+  stalwart_etc:
+  stalwart_data:
+  dms_mail_data:
+  dms_mail_state:
+  mailu_redis:
+  mailu_data:
+  mailu_dkim:
+  mailu_mail:
+  mailu_queue:
+  mailu_filter:
+  mailu_webmail:
+  postal_mariadb:
+  postal_config:
+  plunk_minio:
+  plunk_data:
+  listmonk_uploads:
 
 # kong volumes (unused):
 # volumes:

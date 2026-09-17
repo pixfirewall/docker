@@ -82,6 +82,23 @@ Popular self-hosted applications, each group in its own profile. `--profile self
 | `apps` | `syncthing` | Peer-to-peer file synchronisation | 8384, 22000, 21027/udp |
 | `apps` | `it-tools` | Handy developer utilities (JWT decoder, hashes, converters, ...) | 8087 |
 | `apps` | `excalidraw` | Whiteboard / hand-drawn diagrams | 8088 |
+
+### Mail servers and mail services (profiles)
+
+Full mail servers to develop against real SMTP / IMAP, and mail platforms for transactional mail and newsletters. Each has its own profile, `--profile mail` starts all of them. Mail that would leave the stack is delivered to **Mailpit** (http://localhost:8025), which starts with every mail profile.
+
+| Profile | Service | What it is | Host ports |
+|---|---|---|---|
+| `stalwart` | `stalwart` | Stalwart Mail Server: SMTP, IMAP, JMAP, CalDAV/CardDAV, spam filter, web admin; setup automated | 2525 (SMTP), 2465 (submission TLS), 2993 (IMAPS), 8480 (admin) |
+| `mailserver` | `docker-mailserver` | docker-mailserver: Postfix + Dovecot, configured with files / env | 3525, 3587 (submission), 3465, 3143 (IMAP), 3993 |
+| `mailu` | `mailu-front`, `-admin`, `-imap`, `-smtp`, `-antispam`, `-webmail`, `-redis`, `-resolver` | Mailu: Postfix, Dovecot, Rspamd, Roundcube webmail, admin UI | 4525 (SMTP), 4465 (submission TLS), 4993 (IMAPS), 8481 (HTTPS UI) |
+| (script) | mailcow | mailcow-dockerized, run with `scripts/mailcow.sh` as its own compose project | 7025, 7465, 7587, 7143, 7993, 8486 (HTTPS UI) |
+| `postal` | `postal-web`, `postal-smtp`, `postal-worker`, `postal-mariadb` | Postal: mail delivery platform for applications (API, SMTP, webhooks, tracking) | 8482 (UI), 5525 (SMTP) |
+| `plunk` | `plunk`, `plunk-minio` | Plunk: email platform (transactional + marketing) on AWS SES, SES emulated by LocalStack | 8483 (`app.localhost` / `api.localhost`) |
+| `listmonk` | `listmonk` | listmonk: newsletters and mailing lists, sends through Mailpit | 8484 |
+| `relay` | `postfix` | Plain Postfix relay in front of Mailpit | 127.0.0.1:1587 |
+| `relay` | `opensmtpd` | Plain OpenSMTPD relay in front of Mailpit | 127.0.0.1:1588 |
+| `tools` + every mail profile | `mailpit` | Catches all mail, web UI + API | 1025 (SMTP), 8025 (UI) |
 | `haproxy` | `haproxy` | Load balancer in front of RabbitMQ (bring your own config) | 5673, 15673 |
 
 ## 📋 Prerequisites
@@ -106,6 +123,11 @@ docker compose --profile tools up -d
 
 # default services + tools + observability
 docker compose --profile tools --profile observability up -d
+
+# mail: one server / service or all of them
+docker compose --profile stalwart up -d stalwart
+docker compose --profile mail up -d
+scripts/mailcow.sh up
 
 # self-hosted apps: one group or all of them
 docker compose --profile media up -d
@@ -154,6 +176,9 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | `yarn home` | landing page on http://localhost:3080 |
 | `yarn selfhosted` | every self-hosted app |
 | `yarn cloud`, `yarn photos`, `yarn media`, `yarn smarthome`, `yarn portainer` | Nextcloud, Immich, Jellyfin + Navidrome, Home Assistant + Mosquitto, Portainer |
+| `yarn mail` | every mail server / mail service |
+| `yarn stalwart`, `yarn mailserver`, `yarn mailu`, `yarn postal`, `yarn plunk`, `yarn listmonk`, `yarn relay` | a single mail server / service (+ Mailpit) |
+| `yarn mailcow up` / `yarn mailcow down` | mailcow |
 | `yarn kong`, `yarn kc`, `yarn pg`, `yarn ad`, `yarn ls`, `yarn sq` | start Kong, Keycloak, Postgres, Adminer, LocalStack, SonarQube |
 | `yarn ps`, `yarn logs` | status, follow logs |
 | `yarn down` | stop everything, including optional services |
@@ -179,6 +204,7 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
    - postgres-exporter.env
    - mongodb-exporter.env
    - nextcloud.env, immich.env, vaultwarden.env, forgejo.env, n8n.env, paperless.env
+   - stalwart.env, docker-mailserver.env, mailu.env, postal.env, plunk.env, listmonk.env, postfix.env
    - nats.env
    - mosquitto.env
    - rabbitmq.env
@@ -242,6 +268,15 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | Syncthing | http://localhost:8384 | set a GUI password in the settings |
 | IT-Tools | http://localhost:8087 | |
 | Excalidraw | http://localhost:8088 | |
+| Stalwart | admin http://localhost:8480/admin, SMTP `localhost:2525`, submission `localhost:2465` (TLS), IMAPS `localhost:2993` | admin `admin` / `admin`, mailbox `dev@example.test` / `dev-password-123` |
+| docker-mailserver | SMTP `localhost:3525`, submission `localhost:3587` (STARTTLS), IMAP `localhost:3143` (STARTTLS), IMAPS `localhost:3993` | `dev@example.test` / `dev-password-123` |
+| Mailu | https://localhost:8481 (admin `/admin`, webmail `/webmail`), SMTP `localhost:4525`, submission `localhost:4465` (TLS), IMAPS `localhost:4993` | `admin@example.test` / `admin-password-123` |
+| mailcow | https://localhost:8486, SMTP `localhost:7025`, submission `localhost:7587`, IMAPS `localhost:7993` | `admin` / `moohoo` |
+| Postal | http://localhost:8482, SMTP `localhost:5525` | create with `postal make-user`, see [Postal](#postal) |
+| Plunk | http://app.localhost:8483, API http://api.localhost:8483 | sign up on first visit |
+| listmonk | http://localhost:8484 | `admin` / `admin-password-123` |
+| Postfix relay | SMTP `localhost:1587` | none |
+| OpenSMTPD relay | SMTP `localhost:1588` | none |
 
 From inside other containers use the service name as host, e.g. `postgres:5432`, `redis:6379`, `mailpit:1025`, `jaeger:4318`.
 
@@ -374,6 +409,70 @@ Data lives in named volumes (`docker compose --profile '*' down -v` removes it) 
 - **Vaultwarden** works over plain HTTP on `localhost` in the browser; the Bitwarden mobile / desktop apps require HTTPS.
 - **Paperless-ngx** uses SQLite and the shared `redis` (database 2), and OCRs documents in English (`PAPERLESS_OCR_LANGUAGE`).
 
+### Mail servers
+
+All mail servers use the domain `example.test` (a reserved test TLD) and the self-signed certificate from `./certs`, so mail clients will warn about the certificate. Mail to other domains is relayed to Mailpit where the server supports a relay host (docker-mailserver, Mailu, Postal, the relays, listmonk). Quick test with Python:
+
+```python
+import smtplib, ssl
+from email.message import EmailMessage
+m = EmailMessage(); m["From"] = "dev@example.test"; m["To"] = "dev@example.test"; m["Subject"] = "hello"; m.set_content("hi")
+s = smtplib.SMTP_SSL("localhost", 2465, context=ssl._create_unverified_context())  # Stalwart
+s.login("dev@example.test", "dev-password-123"); s.send_message(m); s.quit()
+```
+
+#### Stalwart
+- The setup wizard is completed automatically on the first start (`data/stalwart/entrypoint.sh`): hostname `mail.example.test`, domain `example.test`, mailbox `dev@example.test`. Everything else is configured in the web admin (http://localhost:8480/admin, `admin` / `admin`).
+- Stalwart's default listeners are SMTP 25, submission over TLS 465 and IMAPS 993 (no plain 143 / 587).
+- Mail from unauthenticated senders without SPF / DKIM (e.g. a test script on port 2525) is often classified as spam and lands in *Junk Mail*; use authenticated submission on 2465.
+- Outgoing mail to other domains is delivered directly via MX lookup, configure a relay route in the admin to send it to `mailpit:1025` instead.
+
+#### docker-mailserver
+- Accounts are defined in `data/docker-mailserver/config/postfix-accounts.cf` (`dev@example.test`). Manage them with the built-in `setup` command:
+  ```bash
+  docker compose exec docker-mailserver setup email add alice@example.test alice-password-123
+  docker compose exec docker-mailserver setup email list
+  ```
+- ClamAV, SpamAssassin, Rspamd, Fail2ban, ... are disabled to keep it light (`env/docker-mailserver.env`).
+
+#### Mailu
+- Needs its own network (`mailu`, 192.168.203.0/24) with its DNSSEC validating resolver, other containers reach it on `mailu-front`.
+- `admin@example.test` is created on the first start. Add users in the admin UI or with the CLI:
+  ```bash
+  docker compose exec mailu-admin flask mailu user dev example.test dev-password-123
+  ```
+- Mailu 2024.06 only enables implicit TLS for clients: submission 465 and IMAPS 993.
+
+#### mailcow
+mailcow-dockerized is a complete compose project of its own (~18 containers) with a configuration generator, so it is managed by a script instead of `docker-compose.yml`:
+```bash
+scripts/mailcow.sh up        # first run: clones it into data/mailcow and generates mailcow.conf
+scripts/mailcow.sh status
+scripts/mailcow.sh down      # data stays in docker volumes, `destroy` removes everything
+```
+The script moves all host ports (UI https://localhost:8486, SMTP 7025, submission 7587, IMAPS 7993, ...) so it can run next to the other mail servers; override them with `MAILCOW_*_PORT` variables. Its network uses 192.168.204.0/24 (`MAILCOW_IPV4_NETWORK`) instead of mailcow's default 172.22.1.0/24, which often overlaps with networks Docker assigned to other projects. ClamAV is disabled to save memory (mailcow recommends 6 GB RAM with ClamAV).
+
+#### Postal
+- Runs emulated on Apple Silicon (amd64-only images), the first start takes a while.
+- Create the first admin, then log in on http://localhost:8482 and create an organization, a mail server and SMTP / API credentials:
+  ```bash
+  docker compose --profile postal run --rm postal-web postal make-user
+  ```
+- All mail sent through Postal is relayed to Mailpit (`POSTAL_SMTP_RELAYS` in `env/postal.env`).
+
+#### Plunk
+- Plunk sends exclusively through AWS SES. Locally SES is emulated by the `localstack` service (`AWS_ENDPOINT_URL` in `env/plunk.env`), emails "sent" by Plunk are listed at `http://localhost:4566/_aws/ses`. Set real AWS credentials and remove `AWS_ENDPOINT_URL` to deliver for real.
+- The dashboard runs on http://app.localhost:8483 and the API on http://api.localhost:8483 (`*.localhost` resolves to 127.0.0.1 in browsers and curl).
+
+#### listmonk
+- The schema is installed automatically and the SMTP settings point to Mailpit on the first start (`data/listmonk/defaults.sql`, only applied while the install defaults are unchanged), so test campaigns show up in Mailpit right away.
+
+#### Relays (Postfix / OpenSMTPD)
+- Accept mail without authentication and relay everything to Mailpit, handy to test an application against a "real" MTA (queueing, retries, `Received` headers). Published on 127.0.0.1 only.
+
+#### Not included: Cuttlefish
+[Cuttlefish](https://github.com/mlandauer/cuttlefish) has no published Docker image and no commits since 2024; Postal covers the same use case (transactional mail server with a web UI, tracking and webhooks).
+
 ### HAProxy
 Not started by default. Add `data/haproxy/haproxy.cfg` and run `docker compose --profile haproxy up -d haproxy` (exposed on 5673 / 15673 so it does not clash with RabbitMQ).
 
@@ -414,6 +513,7 @@ MySQL moved from 5.7 to 8.0, which upgrades the data directory in place on the f
 - **Postgres fails with `in 18+, these Docker images are configured to store database data in a format ...`**: an old compose file mounts `/var/lib/postgresql/data`; use the current `docker-compose.yml` and see [Upgrading Postgres](#upgrading-postgres).
 - **Grafana data source changes are not picked up**: provisioning is read at startup, run `docker compose restart grafana`.
 - **`bind: address already in use` for port 53**: see [AdGuard Home](#adguard-home).
+- **Mail client cannot connect to a mail server**: check the ports in [Mail servers](#mail-servers); Stalwart and Mailu only offer implicit TLS (465 / 993), accept the self-signed certificate.
 - **Immich / Nextcloud are slow or restart**: both need memory (Immich ML ~1-2 GB); start them on their own, e.g. `docker compose --profile photos up -d`.
 - **Grafana panels show `Plugin not registered`**: Grafana downloads some data source plugins (e.g. Prometheus) from grafana.com on its first start. If that download failed (offline, slow machine), run `docker compose restart grafana`.
 - **A container is `unhealthy`**: `docker inspect --format '{{json .State.Health}}' <container>` shows the output of the last health checks.
@@ -454,13 +554,19 @@ Dependabot (`.github/dependabot.yml`) opens weekly pull requests for image, npm 
 │ ├── immich/        (Immich uploads)
 │ ├── paperless/     (Paperless-ngx consume folder)
 │ ├── homeassistant/ (Home Assistant configuration)
-│ └── syncthing/     (Syncthing data)
+│ ├── syncthing/     (Syncthing data)
+│ ├── stalwart/      (first start setup script)
+│ ├── docker-mailserver/config/ (mail accounts)
+│ ├── listmonk/      (local SMTP defaults)
+│ ├── opensmtpd/     (relay image and smtpd.conf)
+│ └── mailcow/       (mailcow-dockerized checkout, created by scripts/mailcow.sh)
 ├── env/
 │ └── (environment files)
 ├── certs/
 │ ├── generate_ca.sh
 │ └── (SSL certificates)
 ├── .github/         (CI workflow, Dependabot)
+├── scripts/         (mailcow.sh)
 ├── test-node/       (tiny express app that logs incoming requests)
 └── docker-compose.yml
 ```
@@ -474,6 +580,7 @@ Dependabot (`.github/dependabot.yml`) opens weekly pull requests for image, npm 
 - `vault` runs in dev mode with a well-known root token
 - `portainer` and `uptime-kuma` also get the Docker socket (Portainer with write access = full control over Docker)
 - The self-hosted apps use default credentials and plain HTTP; they are not hardened for exposure to a network
+- The mail servers and relays are configured for local development only: never expose their ports to the internet (open relays, default passwords, self-signed certificates)
 
 ## 📄 License
 

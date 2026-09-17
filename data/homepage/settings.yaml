@@ -33,3 +33,6 @@ layout:
   Apps:
     style: row
     columns: 4
+  Mail:
+    style: row
+    columns: 4
