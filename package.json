@@ -22,6 +22,7 @@
     "mailserver": "docker compose --profile mailserver up -d docker-mailserver mailpit",
     "mailu": "docker compose --profile mailu up -d mailu-front mailu-admin mailu-imap mailu-smtp mailu-antispam mailu-webmail mailpit",
     "media": "docker compose --profile media up -d jellyfin navidrome",
+    "npm-proxy": "docker compose --profile npm up -d",
     "obs": "docker compose --profile observability up -d",
     "pg": "docker compose up -d postgres",
     "photos": "docker compose --profile photos up -d immich-server immich-machine-learning",

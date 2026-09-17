@@ -83,6 +83,13 @@ Popular self-hosted applications, each group in its own profile. `--profile self
 | `apps` | `it-tools` | Handy developer utilities (JWT decoder, hashes, converters, ...) | 8087 |
 | `apps` | `excalidraw` | Whiteboard / hand-drawn diagrams | 8088 |
 
+### Reverse proxy (profile)
+
+| Profile | Service | Purpose | Host ports |
+|---|---|---|---|
+| `npm` | `nginx-proxy-manager` | Nginx Proxy Manager: reverse proxy with a web UI, Let's Encrypt / custom certificates, access lists, redirects, streams | 80, 443, 81 (admin UI) |
+| `npm` | `nginx-proxy-manager-setup` | One-shot: creates the first admin user and a proxy host per service (`<name>.localhost`) | |
+
 ### Mail servers and mail services (profiles)
 
 Full mail servers to develop against real SMTP / IMAP, and mail platforms for transactional mail and newsletters. Each has its own profile, `--profile mail` starts all of them. Mail that would leave the stack is delivered to **Mailpit** (http://localhost:8025), which starts with every mail profile.
@@ -123,6 +130,9 @@ docker compose --profile tools up -d
 
 # default services + tools + observability
 docker compose --profile tools --profile observability up -d
+
+# reverse proxy with nice host names for the stack
+docker compose --profile npm up -d
 
 # mail: one server / service or all of them
 docker compose --profile stalwart up -d stalwart
@@ -176,6 +186,7 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | `yarn home` | landing page on http://localhost:3080 |
 | `yarn selfhosted` | every self-hosted app |
 | `yarn cloud`, `yarn photos`, `yarn media`, `yarn smarthome`, `yarn portainer` | Nextcloud, Immich, Jellyfin + Navidrome, Home Assistant + Mosquitto, Portainer |
+| `yarn npm-proxy` | Nginx Proxy Manager + the proxy hosts |
 | `yarn mail` | every mail server / mail service |
 | `yarn stalwart`, `yarn mailserver`, `yarn mailu`, `yarn postal`, `yarn plunk`, `yarn listmonk`, `yarn relay` | a single mail server / service (+ Mailpit) |
 | `yarn mailcow up` / `yarn mailcow down` | mailcow |
@@ -205,6 +216,7 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
    - mongodb-exporter.env
    - nextcloud.env, immich.env, vaultwarden.env, forgejo.env, n8n.env, paperless.env
    - stalwart.env, docker-mailserver.env, mailu.env, postal.env, plunk.env, listmonk.env, postfix.env
+   - nginx-proxy-manager.env
    - nats.env
    - mosquitto.env
    - rabbitmq.env
@@ -268,6 +280,7 @@ Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/p
 | Syncthing | http://localhost:8384 | set a GUI password in the settings |
 | IT-Tools | http://localhost:8087 | |
 | Excalidraw | http://localhost:8088 | |
+| Nginx Proxy Manager | admin UI http://localhost:81, proxy http://localhost | `admin@example.com` / `changeme` |
 | Stalwart | admin http://localhost:8480/admin, SMTP `localhost:2525`, submission `localhost:2465` (TLS), IMAPS `localhost:2993` | admin `admin` / `admin`, mailbox `dev@example.test` / `dev-password-123` |
 | docker-mailserver | SMTP `localhost:3525`, submission `localhost:3587` (STARTTLS), IMAP `localhost:3143` (STARTTLS), IMAPS `localhost:3993` | `dev@example.test` / `dev-password-123` |
 | Mailu | https://localhost:8481 (admin `/admin`, webmail `/webmail`), SMTP `localhost:4525`, submission `localhost:4465` (TLS), IMAPS `localhost:4993` | `admin@example.test` / `admin-password-123` |
@@ -409,6 +422,19 @@ Data lives in named volumes (`docker compose --profile '*' down -v` removes it) 
 - **Vaultwarden** works over plain HTTP on `localhost` in the browser; the Bitwarden mobile / desktop apps require HTTPS.
 - **Paperless-ngx** uses SQLite and the shared `redis` (database 2), and OCRs documents in English (`PAPERLESS_OCR_LANGUAGE`).
 
+### Nginx Proxy Manager
+Gives the services of the stack real host names instead of ports, and terminates TLS in one place.
+
+```bash
+docker compose --profile npm up -d
+```
+
+- Admin UI: http://localhost:81 (`admin@example.com` / `changeme` - change it after the first login). A fresh installation has no user at all; the `nginx-proxy-manager-setup` one-shot creates this one through the API.
+- The same one-shot creates a proxy host per service, so the services are reachable by name once they run: http://homepage.localhost, http://kong.localhost, http://grafana.localhost, http://mailpit.localhost, http://adminer.localhost, http://jellyfin.localhost, http://nextcloud.localhost, http://wiremock.localhost (`*.localhost` resolves to 127.0.0.1 in browsers and curl). A host whose service is not running answers `502`.
+- Edit the list in `NPM_PROXY_HOSTS` (`env/nginx-proxy-manager.env`) as `<subdomain>:<container>:<port>`, then run the one-shot again: `docker compose --profile npm up nginx-proxy-manager-setup`. It only adds what is missing, so hosts you created in the UI are kept.
+- For HTTPS add a certificate in the UI (*SSL Certificates*: Let's Encrypt for a real domain, or import `certs/ca.pem` + `certs/ca.key` as a custom certificate) and assign it to a host.
+- If ports 80 / 443 are already used on your machine, set `NPM_HTTP_PORT` / `NPM_HTTPS_PORT` (and then use e.g. http://kong.localhost:8080).
+
 ### Mail servers
 
 All mail servers use the domain `example.test` (a reserved test TLD) and the self-signed certificate from `./certs`, so mail clients will warn about the certificate. Mail to other domains is relayed to Mailpit where the server supports a relay host (docker-mailserver, Mailu, Postal, the relays, listmonk). Quick test with Python:
@@ -512,6 +538,7 @@ MySQL moved from 5.7 to 8.0, which upgrades the data directory in place on the f
 - **Keycloak / Kong TLS errors**: run `./certs/generate_ca.sh` and restart the services. Trust `certs/ca.pem` in your OS / browser, or use `curl --cacert certs/ca.pem`.
 - **Postgres fails with `in 18+, these Docker images are configured to store database data in a format ...`**: an old compose file mounts `/var/lib/postgresql/data`; use the current `docker-compose.yml` and see [Upgrading Postgres](#upgrading-postgres).
 - **Grafana data source changes are not picked up**: provisioning is read at startup, run `docker compose restart grafana`.
+- **Nginx Proxy Manager does not start**: ports 80 / 443 are often in use (another web server or stack); set `NPM_HTTP_PORT` / `NPM_HTTPS_PORT` in `.env`.
 - **`bind: address already in use` for port 53**: see [AdGuard Home](#adguard-home).
 - **Mail client cannot connect to a mail server**: check the ports in [Mail servers](#mail-servers); Stalwart and Mailu only offer implicit TLS (465 / 993), accept the self-signed certificate.
 - **Immich / Nextcloud are slow or restart**: both need memory (Immich ML ~1-2 GB); start them on their own, e.g. `docker compose --profile photos up -d`.
@@ -559,6 +586,7 @@ Dependabot (`.github/dependabot.yml`) opens weekly pull requests for image, npm 
 │ ├── docker-mailserver/config/ (mail accounts)
 │ ├── listmonk/      (local SMTP defaults)
 │ ├── opensmtpd/     (relay image and smtpd.conf)
+│ ├── nginx-proxy-manager/ (proxy host setup script)
 │ └── mailcow/       (mailcow-dockerized checkout, created by scripts/mailcow.sh)
 ├── env/
 │ └── (environment files)
