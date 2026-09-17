@@ -149,3 +149,87 @@
         description: "REST API"
         server: local
         container: opensearch
+- Cloud & Photos:
+    - Nextcloud:
+        href: http://localhost:8084
+        description: "Files, calendar, contacts (admin / admin)"
+        server: local
+        container: nextcloud
+    - Immich:
+        href: http://localhost:2283
+        description: "Photo & video backup"
+        server: local
+        container: immich-server
+- Media & Home:
+    - Jellyfin:
+        href: http://localhost:8096
+        description: "Movies & series from ./data/media"
+        server: local
+        container: jellyfin
+    - Navidrome:
+        href: http://localhost:4534
+        description: "Music from ./data/media/music"
+        server: local
+        container: navidrome
+    - Home Assistant:
+        href: http://localhost:8123
+        description: "Home automation"
+        server: local
+        container: homeassistant
+    - AdGuard Home:
+        href: http://localhost:8083
+        description: "DNS ad blocking (setup wizard on :3002)"
+        server: local
+        container: adguard
+- Admin:
+    - Portainer:
+        href: https://localhost:9443
+        description: "Docker management"
+        server: local
+        container: portainer
+    - Uptime Kuma:
+        href: http://localhost:3001
+        description: "Uptime monitoring"
+        server: local
+        container: uptime-kuma
+- Apps:
+    - Vaultwarden:
+        href: http://localhost:8085
+        description: "Bitwarden compatible password manager"
+        server: local
+        container: vaultwarden
+    - Forgejo:
+        href: http://localhost:3003
+        description: "Git hosting"
+        server: local
+        container: forgejo
+    - n8n:
+        href: http://localhost:5678
+        description: "Workflow automation"
+        server: local
+        container: n8n
+    - Paperless-ngx:
+        href: http://localhost:8010
+        description: "Document archive (admin / admin)"
+        server: local
+        container: paperless
+    - Stirling PDF:
+        href: http://localhost:8086
+        description: "PDF tools"
+        server: local
+        container: stirling-pdf
+    - Syncthing:
+        href: http://localhost:8384
+        description: "File synchronisation"
+        server: local
+        container: syncthing
+    - IT-Tools:
+        href: http://localhost:8087
+        description: "Developer utilities"
+        server: local
+        container: it-tools
+    - Excalidraw:
+        href: http://localhost:8088
+        description: "Whiteboard / diagrams"
+        server: local
+        container: excalidraw

@@ -21,3 +21,15 @@ layout:
   Kafka & Search:
     style: row
     columns: 4
+  Cloud & Photos:
+    style: row
+    columns: 4
+  Media & Home:
+    style: row
+    columns: 4
+  Admin:
+    style: row
+    columns: 4
+  Apps:
+    style: row
+    columns: 4
