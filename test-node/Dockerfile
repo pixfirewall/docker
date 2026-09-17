@@ -1,8 +1,11 @@
-FROM node:18.16.0-alpine3.17
-
-RUN mkdir -p /app
+FROM node:22-alpine
 
 WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
 
 EXPOSE 3007
 

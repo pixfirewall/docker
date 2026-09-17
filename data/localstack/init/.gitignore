@@ -1,0 +1,4 @@
+# Put LocalStack init hooks (*.sh) here, they run once LocalStack is ready
+/*
+!/.gitignore
+!/*.sh

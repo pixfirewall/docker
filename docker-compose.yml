@@ -1,21 +1,28 @@
-version: '3.9'
+x-kong-build: &kong-build
+  image: local-kong:${KONG_VERSION:-3.7.1-ubuntu}
+  build:
+    context: ./data/kong
+    dockerfile: Dockerfile
+    args:
+      - KONG_VERSION=${KONG_VERSION:-3.7.1-ubuntu}
 
 services:
   kong-setup:
-    image: kong:${KONG_VERSION:-latest}
+    <<: *kong-build
     container_name: kong-setup
     env_file: env/kong.env
     volumes:
       - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs
-    command: "kong migrations bootstrap"
+    # `bootstrap` is a no-op on an already bootstrapped database, `up`/`finish` apply pending migrations after upgrades
+    command: ["sh", "-c", "kong migrations bootstrap && kong migrations up && kong migrations finish"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - develop
 
   kong:
-    image: local-kong:latest
-    build:
-      context: ./data/kong
-      dockerfile: Dockerfile
+    <<: *kong-build
     container_name: kong
     env_file: env/kong.env
     ports:
@@ -28,10 +35,16 @@ services:
       # - kong_prefix_vol:${KONG_PREFIX:-/var/run/kong}
       # - kong_tmp_vol:/tmp
       # - kong_config_vol:/opt/kong
-      - ./data/kong/kong.yml:/opt/kong/kong.yml
+      - ./data/kong/kong.yaml:/opt/kong/kong.yaml:ro
       - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs
+    extra_hosts:
+      # Make host.docker.internal (used in kong.yaml) resolvable on Linux as well
+      - "host.docker.internal:host-gateway"
     security_opt:
       - no-new-privileges
+    depends_on:
+      kong-setup:
+        condition: service_completed_successfully
     networks:
       - develop
 
@@ -54,6 +67,9 @@ services:
     # command: "start --verbose"
     volumes:
       - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs/conf/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - develop
 
@@ -64,7 +80,7 @@ services:
     # env_file: env/redis.env
     ports:
       - "6379:6379"
-    # command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+    # command: redis-server --save 20 1 --loglevel warning --requirepass <password>
     volumes:
       - ./data/redis/data/:/data
     networks:
@@ -76,27 +92,37 @@ services:
     restart: always
     env_file: env/postgres.env
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - ./data/postgres/data:/var/lib/postgresql/data
+      # a sub directory, initdb refuses a non-empty data dir (data/.gitignore)
+      - ./data/postgres/data/pgdata:/var/lib/postgresql/data
+      - ./data/postgres/init:/docker-entrypoint-initdb.d:ro
       - ${SSL_CERTS_LOCATION:-./certs}:/var/lib/postgresql/certs
     # command: >
     #   -c ssl=on
     #   -c ssl_cert_file=/var/lib/postgresql/certs/ca.pem
     #   -c ssl_key_file=/var/lib/postgresql/certs/ca.key
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - develop
 
   mysql:
     image: mysql/mysql-server:5.7
     container_name: mysql
-    env_file: .env
+    # mysql/mysql-server:5.7 is only published for amd64
+    platform: linux/amd64
+    env_file: env/mysql.env
     command: --default-authentication-plugin=mysql_native_password
     restart: always
     volumes:
-      - ./data/mysql/data:/var/lib/mysql
+      # a sub directory, mysqld --initialize refuses a non-empty data dir (data/.gitignore)
+      - ./data/mysql/data/db:/var/lib/mysql
     ports:
-      - '${MYSQL_DATABASE_PORT}:3306'
+      - '${MYSQL_DATABASE_PORT:-3306}:3306'
     networks:
       - develop
 
@@ -107,7 +133,7 @@ services:
     env_file: env/mongodb.env
     # command: mongod --auth
     ports:
-      - "${MONGODB_PORT}:27017"
+      - "${MONGODB_PORT:-27017}:27017"
     volumes:
       - ./data/mongodb/data:/data/db
     networks:
@@ -115,10 +141,13 @@ services:
 
   nui:
     image: ghcr.io/nats-nui/nui
+    container_name: nui
     ports:
       - "31311:31311"
     volumes:
       - ./data/nuidb:/db
+    depends_on:
+      - nats
     networks:
       - develop
 
@@ -128,7 +157,7 @@ services:
     restart: always
     env_file: env/nats.env
     # command: ['-js', '-m', '8222', '-p', '4222']
-    command: "--http_port 8222 --user lf-test --pass Gie4CheiboSei3quhaeW9aek --jetstream"
+    command: "--http_port 8222 --user ${NATS_USER} --pass ${NATS_PASSWORD} --jetstream"
     ports:
       - "4222:4222"
       - "8222:8222"
@@ -140,7 +169,7 @@ services:
     container_name: adminer
     restart: always
     ports:
-      - '${MYSQL_ADMINER_PORT}:8080'
+      - '${MYSQL_ADMINER_PORT:-8080}:8080'
     networks:
       - develop
 
@@ -157,15 +186,17 @@ services:
       - develop
 
   localstack:
-    image: localstack/localstack
+    # releases after 4.14 refuse to start without a LocalStack account (LOCALSTACK_AUTH_TOKEN)
+    image: localstack/localstack:${LOCALSTACK_VERSION:-4.14}
     container_name: localstack
+    environment:
+      - LOCALSTACK_AUTH_TOKEN
     ports:
-      - '4563-4599:4563-4599'
-      - '8055:8080'
-    env_file: .env
+      - '4566:4566'           # LocalStack gateway
+      - '4510-4559:4510-4559' # external services port range
     volumes:
-      - ./data/localstack:/data/localstack
-      - ./aws/commands:/docker-entrypoint-initaws.d
+      - ./data/localstack/data:/var/lib/localstack
+      - ./data/localstack/init:/etc/localstack/init/ready.d
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - develop
@@ -178,7 +209,7 @@ services:
     ports:
       - '9000:9000'
     volumes:
-      - ./config/sonarqube/extensions:/opt/sonarqube/extensions
+      - ./data/sonarqube/extensions:/opt/sonarqube/extensions
     networks:
       - develop
 
@@ -199,8 +230,9 @@ services:
       - develop
 
   rabbitmq:
+    image: local-rabbitmq:latest
     build:
-      context: data/rabbitmq
+      context: ./data/rabbitmq
       dockerfile: Dockerfile
     container_name: rabbitmq
     restart: always
@@ -217,28 +249,33 @@ services:
   haproxy:
     image: haproxy:latest
     container_name: haproxy
+    # Opt-in only (`docker compose --profile haproxy up -d`): requires ./data/haproxy/haproxy.cfg
+    profiles:
+      - haproxy
     volumes:
-      - ./rabbitmq/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./data/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
       - rabbitmq
     ports:
-      # HOST:CONTAINER
-      - 15672:15672
-      - 5672:5672
+      # HOST:CONTAINER - host ports must not clash with the rabbitmq service
+      - 15673:15672
+      - 5673:5672
     networks:
       - develop
 
   test:
     build:
-      context: .
-      dockerfile: test-node/Dockerfile
+      context: ./test-node
+      dockerfile: Dockerfile
     container_name: test
     volumes:
       - ./test-node:/app
+      # keep the node_modules installed in the image instead of the host bind mount
+      - /app/node_modules
     ports:
       - 3007:3007
     networks:
-        - develop
+      - develop
 
 networks:
   develop:
