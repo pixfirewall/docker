@@ -142,7 +142,7 @@ docker compose --profile '*' down        # stop and remove all containers (data 
 docker compose --profile '*' down -v     # ... and remove the named volumes (grafana, prometheus, loki, kafka, opensearch, ...)
 ```
 
-Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/pgdata`). Stop the service and delete that directory to start from scratch.
+Database data is stored in bind mounts below `data/` (e.g. `data/postgres/data/pg18`). Stop the service and delete that directory to start from scratch.
 
 ### package.json shortcuts
 
@@ -377,12 +377,41 @@ Data lives in named volumes (`docker compose --profile '*' down -v` removes it) 
 ### HAProxy
 Not started by default. Add `data/haproxy/haproxy.cfg` and run `docker compose --profile haproxy up -d haproxy` (exposed on 5673 / 15673 so it does not clash with RabbitMQ).
 
+## ⬆️ Upgrading databases
+
+Image versions are kept up to date by Dependabot. Major versions of databases usually change the on-disk format, so Dependabot is configured to **not** propose major upgrades for `postgres`, `mysql`, `mongo`, `sonarqube`, `opensearch` and `kafka`; do those manually.
+
+### Upgrading Postgres
+
+The stack moved from `postgres:14` to `postgres:18`. Postgres 18 keeps its data in `data/postgres/data/pg18`, the old data in `data/postgres/data/pgdata` is left untouched. To take your old databases along:
+
+```bash
+docker compose down
+
+# 1. dump everything from the old data directory with a temporary postgres 14 container
+docker run -d --name pg14-export -e POSTGRES_PASSWORD=test \
+  -v "$PWD/data/postgres/data/pgdata:/var/lib/postgresql/data" postgres:14-alpine
+docker exec pg14-export pg_isready -U test   # repeat until "accepting connections"
+docker exec pg14-export pg_dumpall -U test --clean --if-exists > data/postgres/pg14-dump.sql
+docker rm -f pg14-export
+
+# 2. start only the new postgres and restore the dump
+docker compose up -d --wait postgres
+docker compose exec -T postgres psql -U test -d postgres < data/postgres/pg14-dump.sql
+#    "current user cannot be dropped" / "role test already exists" errors are expected
+
+# 3. start the rest; once everything works remove data/postgres/data/pgdata and the dump
+docker compose up -d
+```
+
+MySQL moved from 5.7 to 8.0, which upgrades the data directory in place on the first start (there is no way back to 5.7 afterwards, back up `data/mysql/data/db` first).
+
 ## 🩺 Troubleshooting
 
 - **`port is already allocated` / `address already in use`**: another process uses the host port. Change the port in `.env` (e.g. `GRAFANA_PORT=3001`, `POSTGRES_PORT=5433`) or stop the other process (`lsof -nP -iTCP:<port> -sTCP:LISTEN`).
 - **`kong` does not start**: check `docker compose logs kong-setup`; the migrations need Postgres and the `kong` database. On an existing Postgres data directory created before the init script existed, create it manually: `docker compose exec postgres psql -U test -c 'CREATE DATABASE kong'` (same for `keycloak`).
 - **Keycloak / Kong TLS errors**: run `./certs/generate_ca.sh` and restart the services. Trust `certs/ca.pem` in your OS / browser, or use `curl --cacert certs/ca.pem`.
-- **Apple Silicon**: `mysql` (5.7) and `sonarqube` (8.9) only exist for amd64 and run emulated, so they start slower.
+- **Postgres fails with `in 18+, these Docker images are configured to store database data in a format ...`**: an old compose file mounts `/var/lib/postgresql/data`; use the current `docker-compose.yml` and see [Upgrading Postgres](#upgrading-postgres).
 - **Grafana data source changes are not picked up**: provisioning is read at startup, run `docker compose restart grafana`.
 - **`bind: address already in use` for port 53**: see [AdGuard Home](#adguard-home).
 - **Immich / Nextcloud are slow or restart**: both need memory (Immich ML ~1-2 GB); start them on their own, e.g. `docker compose --profile photos up -d`.

@@ -85,7 +85,7 @@ services:
       - develop
 
   redis:
-    image: redis:6.2-alpine
+    image: redis:8.10-alpine
     container_name: redis
     restart: always
     # env_file: env/redis.env
@@ -103,15 +103,17 @@ services:
       - develop
 
   postgres:
-    image: postgres:14-alpine
+    image: postgres:18-alpine
     container_name: postgres
     restart: always
     env_file: env/postgres.env
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      # a sub directory, initdb refuses a non-empty data dir (data/.gitignore)
-      - ./data/postgres/data/pgdata:/var/lib/postgresql/data
+      # Postgres 18+ images keep the data in a version specific sub directory (/var/lib/postgresql/18/docker)
+      # and refuse a mount at /var/lib/postgresql/data. Data of the previous postgres:14 setup stays in
+      # ./data/postgres/data/pgdata, see "Upgrading Postgres" in the README.
+      - ./data/postgres/data/pg18:/var/lib/postgresql
       - ./data/postgres/init:/docker-entrypoint-initdb.d:ro
       - ${SSL_CERTS_LOCATION:-./certs}:/var/lib/postgresql/certs
     # command: >
@@ -127,10 +129,8 @@ services:
       - develop
 
   mysql:
-    image: mysql/mysql-server:5.7
+    image: mysql/mysql-server:8.0
     container_name: mysql
-    # mysql/mysql-server:5.7 is only published for amd64
-    platform: linux/amd64
     env_file: env/mysql.env
     command: --default-authentication-plugin=mysql_native_password
     restart: always
@@ -224,9 +224,8 @@ services:
       - develop
 
   sonarqube:
-    image: sonarqube:8.9.2-community
+    image: sonarqube:26.9.0.129388-community
     container_name: sonarqube
-    platform: linux/amd64
     restart: always
     ports:
       - '9000:9000'

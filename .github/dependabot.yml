@@ -4,6 +4,20 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # major versions of stateful services change the data format and need a manual migration
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mysql/mysql-server"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mongo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sonarqube"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "opensearchproject/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "apache/kafka"
+        update-types: ["version-update:semver-major"]
     groups:
       compose-images:
         patterns: ["*"]
