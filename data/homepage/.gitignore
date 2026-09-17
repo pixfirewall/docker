@@ -1,0 +1,8 @@
+# homepage creates default files on start, only the curated ones are tracked
+/*
+!/.gitignore
+!/settings.yaml
+!/services.yaml
+!/docker.yaml
+!/widgets.yaml
+!/bookmarks.yaml

@@ -24,6 +24,7 @@ services:
   kong:
     <<: *kong-build
     container_name: kong
+    restart: unless-stopped
     env_file: env/kong.env
     ports:
       - 8000:8000
@@ -60,13 +61,23 @@ services:
         - KC_METRICS_ENABLED=${KC_METRICS_ENABLED}
       target: builder
     container_name: keycloak
+    restart: unless-stopped
     env_file: env/keycloak.env
     ports:
       - "8445:8443"
-    command: "start --optimized"
+    # --import-realm creates the realms in data/keycloak/import on first start (existing realms are skipped)
+    command: "start --optimized --import-realm"
     # command: "start --verbose"
     volumes:
       - ${SSL_CERTS_LOCATION:-./certs}:/opt/certs/conf/keys
+      - ./data/keycloak/import:/opt/keycloak/data/import:ro
+    healthcheck:
+      # the image has no curl, check that the management interface (health/metrics) accepts connections
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +94,11 @@ services:
     # command: redis-server --save 20 1 --loglevel warning --requirepass <password>
     volumes:
       - ./data/redis/data/:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - develop
 
@@ -136,6 +152,12 @@ services:
       - "${MONGODB_PORT:-27017}:27017"
     volumes:
       - ./data/mongodb/data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - develop
 
@@ -243,6 +265,12 @@ services:
     volumes:
       - ./data/rabbitmq/data/:/var/lib/rabbitmq/
       - ./data/rabbitmq/log/:/var/log/rabbitmq/
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
     networks:
       - develop
 
@@ -255,7 +283,8 @@ services:
     volumes:
       - ./data/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     ports:
       # HOST:CONTAINER - host ports must not clash with the rabbitmq service
       - 15673:15672
@@ -268,6 +297,13 @@ services:
       context: ./test-node
       dockerfile: Dockerfile
     container_name: test
+    # npm does not forward SIGTERM, without an init process `docker compose stop` waits 10s
+    init: true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3007/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     volumes:
       - ./test-node:/app
       # keep the node_modules installed in the image instead of the host bind mount
@@ -307,7 +343,8 @@ services:
     ports:
       - "${MONGO_EXPRESS_PORT:-8081}:8081"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     networks:
       - develop
 
@@ -327,7 +364,8 @@ services:
     volumes:
       - redisinsight_data:/data
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - develop
 
@@ -341,6 +379,64 @@ services:
       - "${DOZZLE_PORT:-8888}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - develop
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:${HOMEPAGE_VERSION:-v2.4.0}
+    container_name: homepage
+    profiles:
+      - tools
+    restart: unless-stopped
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=localhost:${HOMEPAGE_PORT:-3080},127.0.0.1:${HOMEPAGE_PORT:-3080}
+    ports:
+      - "${HOMEPAGE_PORT:-3080}:3000"
+    volumes:
+      - ./data/homepage:/app/config
+      # container status on the dashboard
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - develop
+
+  wiremock:
+    image: wiremock/wiremock:${WIREMOCK_VERSION:-3.13.2}
+    container_name: wiremock
+    profiles:
+      - tools
+    restart: unless-stopped
+    command: ["--global-response-templating", "--verbose"]
+    ports:
+      - "${WIREMOCK_PORT:-8092}:8080"
+    volumes:
+      - ./data/wiremock/mappings:/home/wiremock/mappings
+      - ./data/wiremock/__files:/home/wiremock/__files
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:8080/__admin/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - develop
+
+  vault:
+    image: hashicorp/vault:${VAULT_VERSION:-2.1}
+    container_name: vault
+    profiles:
+      - tools
+    restart: unless-stopped
+    # dev mode: in-memory storage, unsealed, root token from env/vault.env - never use outside local development
+    command: ["server", "-dev"]
+    env_file: env/vault.env
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     networks:
       - develop
 
@@ -380,11 +476,14 @@ services:
       - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - ./data/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./data/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./data/grafana/dashboards:/var/lib/grafana/dashboards:ro
       # named volume: grafana runs as uid 472 and cannot write to bind mounts on Linux
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
       - jaeger
+      - loki
     networks:
       - develop
 
@@ -402,6 +501,199 @@ services:
     networks:
       - develop
 
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.6.17}
+    container_name: loki
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki_data:/loki
+    networks:
+      - develop
+
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.19.2}
+    container_name: alloy
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      # only ship the logs of this compose project to Loki
+      - COMPOSE_PROJECT=${COMPOSE_PROJECT_NAME}
+    ports:
+      - "${ALLOY_PORT:-12345}:12345"
+    volumes:
+      - ./data/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    networks:
+      - develop
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:${POSTGRES_EXPORTER_VERSION:-v0.20.1}
+    container_name: postgres-exporter
+    profiles:
+      - observability
+    restart: unless-stopped
+    env_file: env/postgres-exporter.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - develop
+
+  redis-exporter:
+    image: oliver006/redis_exporter:${REDIS_EXPORTER_VERSION:-v1.91.1}
+    container_name: redis-exporter
+    profiles:
+      - observability
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - develop
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:${MONGODB_EXPORTER_VERSION:-0.53.0}
+    container_name: mongodb-exporter
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["--collect-all", "--compatible-mode"]
+    env_file: env/mongodb-exporter.env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - develop
+
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:${NATS_EXPORTER_VERSION:-0.20.2}
+    container_name: nats-exporter
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["-varz", "-connz", "-jsz=all", "http://nats:8222"]
+    depends_on:
+      - nats
+    networks:
+      - develop
+
+  # one-shot: enables Kong's prometheus and opentelemetry plugins (idempotent, fixed plugin ids)
+  kong-observability:
+    image: curlimages/curl:${CURL_VERSION:-8.22.0}
+    container_name: kong-observability
+    profiles:
+      - observability
+    volumes:
+      - ./data/kong/observability-plugins.sh:/observability-plugins.sh:ro
+    command: ["sh", "/observability-plugins.sh"]
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - develop
+
+  # ---------------------------------------------------------------------------
+  # Optional Kafka, started only with `--profile kafka`
+  # ---------------------------------------------------------------------------
+
+  kafka:
+    image: apache/kafka:${KAFKA_VERSION:-4.3.1}
+    container_name: kafka
+    profiles:
+      - kafka
+    restart: unless-stopped
+    env_file: env/kafka.env
+    ports:
+      # external listener for clients on the host, containers use kafka:9092
+      - "${KAFKA_PORT:-9094}:9094"
+    volumes:
+      # named volume: kafka runs as appuser and cannot write to bind mounts on Linux
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 15s
+    networks:
+      - develop
+
+  kafka-ui:
+    image: kafbat/kafka-ui:${KAFKA_UI_VERSION:-v1.5.0}
+    container_name: kafka-ui
+    profiles:
+      - kafka
+    restart: unless-stopped
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - DYNAMIC_CONFIG_ENABLED=true
+    ports:
+      - "${KAFKA_UI_PORT:-8090}:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - develop
+
+  # ---------------------------------------------------------------------------
+  # Optional search engine, started only with `--profile search`
+  # ---------------------------------------------------------------------------
+
+  opensearch:
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-3.8.0}
+    container_name: opensearch
+    profiles:
+      - search
+    restart: unless-stopped
+    env_file: env/opensearch.env
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "${OPENSEARCH_PORT:-9200}:9200"
+    volumes:
+      # named volume: opensearch runs as uid 1000 and cannot write to bind mounts on Linux
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+    networks:
+      - develop
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_VERSION:-3.8.0}
+    container_name: opensearch-dashboards
+    profiles:
+      - search
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "${OPENSEARCH_DASHBOARDS_PORT:-5601}:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - develop
+
 networks:
   develop:
     driver: bridge
@@ -410,6 +702,10 @@ volumes:
   redisinsight_data:
   prometheus_data:
   grafana_data:
+  loki_data:
+  alloy_data:
+  kafka_data:
+  opensearch_data:
 
 # kong volumes (unused):
 # volumes:

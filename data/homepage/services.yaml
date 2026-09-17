@@ -1,0 +1,151 @@
+# Links open on the host, the status dot comes from the Docker container state
+- API & Auth:
+    - Kong Manager:
+        href: http://localhost:8002
+        description: "Gateway admin UI"
+        server: local
+        container: kong
+    - Kong Admin API:
+        href: http://localhost:8001/status
+        description: "Admin API status"
+        server: local
+        container: kong
+    - Keycloak:
+        href: https://localhost:8445
+        description: "Identity provider (admin / admin)"
+        server: local
+        container: keycloak
+- Databases:
+    - Adminer:
+        href: http://localhost:8080
+        description: "Postgres & MySQL UI"
+        server: local
+        container: adminer
+    - mongo-express:
+        href: http://localhost:8081
+        description: "MongoDB UI (admin / admin)"
+        server: local
+        container: mongo-express
+    - RedisInsight:
+        href: http://localhost:5540
+        description: "Redis UI"
+        server: local
+        container: redisinsight
+    - PostgreSQL:
+        description: "localhost:5432 (test / test)"
+        server: local
+        container: postgres
+    - MySQL:
+        description: "localhost:3306 (root / test)"
+        server: local
+        container: mysql
+    - MongoDB:
+        description: "localhost:27017 (root / password)"
+        server: local
+        container: mongodb
+    - Redis:
+        description: "localhost:6379"
+        server: local
+        container: redis
+- Messaging:
+    - RabbitMQ:
+        href: http://localhost:15672
+        description: "Management UI (test / test)"
+        server: local
+        container: rabbitmq
+    - NATS UI:
+        href: http://localhost:31311
+        description: "NATS web UI"
+        server: local
+        container: nui
+    - NATS:
+        href: http://localhost:8222
+        description: "Monitoring endpoint"
+        server: local
+        container: nats
+    - Mosquitto:
+        description: "MQTT localhost:1883, websockets :9001"
+        server: local
+        container: mosquitto
+- Developer tools:
+    - Mailpit:
+        href: http://localhost:8025
+        description: "Catches outgoing email"
+        server: local
+        container: mailpit
+    - WireMock:
+        href: http://localhost:8092/__admin/mappings
+        description: "HTTP API mocks"
+        server: local
+        container: wiremock
+    - Vault:
+        href: http://localhost:8200
+        description: "Secrets, dev mode (token: root)"
+        server: local
+        container: vault
+    - Dozzle:
+        href: http://localhost:8888
+        description: "Container logs"
+        server: local
+        container: dozzle
+    - LocalStack:
+        href: http://localhost:4566/_localstack/health
+        description: "AWS emulator"
+        server: local
+        container: localstack
+    - PlantUML:
+        href: http://localhost:8065
+        description: "Diagram server"
+        server: local
+        container: plantuml-server
+    - SonarQube:
+        href: http://localhost:9000
+        description: "Code quality (admin / admin)"
+        server: local
+        container: sonarqube
+    - Test app:
+        href: http://localhost:3007/health
+        description: "Echo / request logger"
+        server: local
+        container: test
+- Observability:
+    - Grafana:
+        href: http://localhost:3000
+        description: "Dashboards & logs (admin / admin)"
+        server: local
+        container: grafana
+    - Prometheus:
+        href: http://localhost:9090/targets
+        description: "Metrics"
+        server: local
+        container: prometheus
+    - Jaeger:
+        href: http://localhost:16686
+        description: "Traces"
+        server: local
+        container: jaeger
+    - Alloy:
+        href: http://localhost:12345
+        description: "Log collector"
+        server: local
+        container: alloy
+- Kafka & Search:
+    - Kafka UI:
+        href: http://localhost:8090
+        description: "Topics, consumers, messages"
+        server: local
+        container: kafka-ui
+    - Kafka:
+        description: "localhost:9094 (host), kafka:9092 (containers)"
+        server: local
+        container: kafka
+    - OpenSearch Dashboards:
+        href: http://localhost:5601
+        description: "Search UI"
+        server: local
+        container: opensearch-dashboards
+    - OpenSearch:
+        href: http://localhost:9200
+        description: "REST API"
+        server: local
+        container: opensearch
