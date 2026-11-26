@@ -231,7 +231,7 @@ services:
       - develop
 
   sonarqube:
-    image: sonarqube:26.9.0.129388-community
+    image: sonarqube:26.11.0.134175-community
     container_name: sonarqube
     restart: always
     ports:
@@ -780,7 +780,7 @@ services:
       - develop
 
   immich-redis:
-    image: valkey/valkey:9.1-alpine
+    image: valkey/valkey:9.2-alpine
     container_name: immich-redis
     profiles: [photos, selfhosted]
     restart: unless-stopped
